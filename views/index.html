@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="pi-plugin-chrome" content="v3" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' file:; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data:; font-src 'self' file:; connect-src 'none';"
+    />
+    <link rel="icon" href="data:," />
+    <title>Hindsight Memory</title>
+    <!-- Synchronous, external: paints the cached host palette before the first frame. -->
+    <script src="./appearance-boot.js"></script>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <div id="app" class="app"></div>
+    <script type="module" src="./panel.js"></script>
+  </body>
+</html>

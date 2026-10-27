@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "local.hindsight.memory",
+  "name": "Hindsight Memory",
+  "version": "0.2.0",
+  "engines": {
+    "piDesktop": ">=0.17.0"
+  },
+  "description": "Long-term project memory for PI-Desktop: wraps the official @vectorize-io/hindsight-coding-agents@0.8.1 pi extension (auto recall + write-back) with a getBranch fix, and adds a work-panel view to edit ~/.hindsight/coding-agent.json and browse the memory bank.",
+  "author": "local",
+  "i18n": {
+    "zh-CN": {
+      "name": "Hindsight Memory",
+      "description": "PI-Desktop 的长期项目记忆：包装官方 @vectorize-io/hindsight-coding-agents@0.8.1 的 pi 扩展（自动召回 + 写回），修掉 getBranch 兼容问题，并新增工作面板用于编辑 ~/.hindsight/coding-agent.json 和浏览记忆库。"
+    }
+  },
+  "main": "main.js",
+  "ui": {
+    "panel": "views/index.html",
+    "title": {
+      "en": "Hindsight Memory",
+      "zh-CN": "Hindsight 记忆"
+    },
+    "width": 1100,
+    "height": 760
+  },
+  "permissions": [
+    "agent.extension",
+    "ui.view",
+    "ui.panel"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "hindsight-memory.open",
+        "title": "Hindsight Memory: Open panel / Hindsight 记忆：打开面板",
+        "keywords": [
+          "hindsight",
+          "memory",
+          "记忆"
+        ]
+      }
+    ],
+    "agentExtensions": [
+      "src/index.mjs"
+    ],
+    "views": [
+      {
+        "id": "hindsight-memory",
+        "title": {
+          "en": "Hindsight Memory",
+          "zh-CN": "Hindsight 记忆"
+        },
+        "icon": "book",
+        "entry": "views/index.html",
+        "order": 50
+      }
+    ]
+  }
+}
