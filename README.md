@@ -34,8 +34,10 @@
 1. **PATH**：上游用裸 `node` spawn 后台 deepen 并吞掉失败；PI-Desktop 从 GUI 启动，PATH 里没有 node，
    于是 git 历史永远不入库、`hindsight_sync_status` 永远 `synced:false`。`src/node-path.mjs` 在扩展加载时把第一个
    含可执行 `node` 的目录（`$HINDSIGHT_NODE_BIN` → 当前可执行文件目录 → Homebrew/MacPorts 常见路径）**追加**到 PATH。
-2. **getBranch**：PI-Desktop 给扩展的 `sessionManager.getBranch()` 恒返回 `[]`，上游“只要是数组就用它”，
-   导致每轮写回 0 条。包装层对每个 handler 的 `ctx` 隐藏 `getBranch`，让上游回落到 `event.messages`。
+2. **转录累积**：PI-Desktop 的 `sessionManager.getBranch()` 恒返回 `[]`，且 `agent_end` 只给本次 run 的消息。
+   直接透传会写回 0 条，仅隐藏 `getBranch` 则会让上游每轮 `replace` 掉整个会话文档（丢失前面各轮的记忆）。
+   包装层按会话累积每次 run 的消息（`src/transcript-store.mjs`，镜像到 `~/.hindsight/pi-desktop-transcripts/`），
+   在 `agent_end` 时把完整转录作为 `getBranch()` 返回，上游因此只 `append` 新增部分。详见 `docs/compatibility.md` §1。
 
 `vendor/` 下五个文件是上游构建产物的逐字节拷贝（md5 见 `vendor/PROVENANCE.md`），**不要手改**。
 
@@ -84,7 +86,8 @@
 ├── manifest.json
 ├── main.js                  # 插件进程入口：onPanelInvoke 分发 7 个通道 + 「打开面板」命令
 ├── src/
-│   ├── index.mjs            # agent 扩展入口：PATH 适配 + getBranch 适配
+│   ├── index.mjs            # agent 扩展入口：PATH 适配 + 转录适配
+│   ├── transcript-store.mjs # 按会话累积转录（内存 + 本地 jsonl 镜像）
 │   ├── node-path.mjs        # 让后台 `node` 可解析
 │   └── panel/
 │       ├── fields.mjs       # 配置字段定义（校验 + 渲染）

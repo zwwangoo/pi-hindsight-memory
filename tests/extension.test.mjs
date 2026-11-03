@@ -3,8 +3,12 @@
 // HINDSIGHT_DISABLED keeps the upstream config resolver from building a runtime.
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 process.env.HINDSIGHT_DISABLED = "1";
+process.env.HINDSIGHT_PI_TRANSCRIPT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "hindsight-ext-"));
 const { default: hindsight, nodePathStatus } = await import("../src/index.mjs");
 
 test("wrapper registers the upstream hooks and survives the PI-Desktop ctx stub", async () => {
@@ -36,6 +40,8 @@ test("wrapper registers the upstream hooks and survives the PI-Desktop ctx stub"
     },
   );
   assert.equal(out, undefined);
+  // A disabled workspace must not leave a transcript on disk: upstream never asks for the branch.
+  assert.deepEqual(fs.readdirSync(process.env.HINDSIGHT_PI_TRANSCRIPT_DIR), []);
 });
 
 test("node is resolvable for the background deepen child", () => {

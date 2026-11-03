@@ -3,11 +3,17 @@
 本文件记录“上游 0.8.1 的 pi 扩展”和“PI-Desktop agent-runtime”之间的接缝，以及由此产生的风险。
 所有结论都可在 `vendor/` 与 PI-Desktop 源码（`packages/agent-runtime/src/extensions/runner.ts`）中核对。
 
-## 1. `getBranch()` 被桩成空数组（已修复）
+## 1. `getBranch()` 是空桩，`agent_end` 只给本次 run 的消息（已修复）
 
-**现象**：不修的话每轮写回 0 条，记忆进不了库。
+**现象**：
+- 直接透传：`getBranch()` 返回 `[]`（truthy）→ `readPiEntries([])` → 0 条 turn → 每轮写回为空。
+- 只隐藏 `getBranch`（本插件 0.2.0 及之前的做法，0.2.1 起修复）：上游改读 `event.messages`，而宿主在 `agent_end` 给的是
+  agent-core 的 `newMessages`，即**仅本次 run 新增的消息**。上游 `planRetain` 发现 turn 不连续，
+  **每轮都走 `replace`**，用最后一次 run 覆盖服务端文档 `conversation:<session>`：
+  前面各轮的记忆被删掉、再重新抽取并触发 consolidation。实测（2026-11）一个写回 22 次、累计发送 499 个 turn 的会话，
+  服务端文档只剩最后 7 行。
 
-**原因**：上游 `agent_end` 把“是数组”当作“有全量 entries”：
+**原因**：
 
 ```js
 // vendor/hindsight-pi.mjs:18863-18865
@@ -20,26 +26,35 @@ pi.on("agent_end", async (event, ctx) => at(ctx)?.hooks.agentEnd(
   event, ctx.sessionManager.getSessionId(), ctx.sessionManager.getBranch?.()));
 ```
 
-PI-Desktop 传给扩展的 `ctx.sessionManager` 是桩实现（`runner.ts` 中 `getEntries: () => []`、`getBranch: () => []`），
-空数组是 truthy，于是 `readPiEntries([])` → `turns.length === 0` → 直接 return。
+宿主侧（`runner.ts` / agent-runtime）：`getEntries: () => []`、`getBranch: () => []` 是故意留的空壳，
+`agent_end` 的 `messages` 来自 agent-core 每次 run 的 `newMessages`。
 
-**修复**（`src/index.mjs`）：包装 `pi.on`，给每个 handler 的 `ctx` 套 Proxy，把 `sessionManager.getBranch`
-置为 `undefined`，使 `getBranch?.()` 求值为 `undefined`，进入 `event.messages` 分支（PI-Desktop 会填充该字段）。
-`ctx` 其余成员与 `pi` 其它方法按原样代理。
+**修复**（`src/index.mjs` + `src/transcript-store.mjs`）：包装 `pi.on`，在 `agent_end` 时
 
-**为什么不是去改宿主**：`getEntries`/`getBranch` 是 PI-Desktop 故意留的空壳（宿主不暴露完整 fallback 树），
-插件侧适配比改宿主风险小，也不影响其它插件。
+1. 把本次 `event.messages` 压缩后追加进按会话累积的转录（只保留上游 `renderMessage` 会读的内容：user/assistant 文本，
+   以及工具调用的名字和 `actionLine` 打印的那一个目标参数；工具输出、thinking 全部丢弃，所以条目很小）；
+2. 让 `ctx.sessionManager.getBranch()` 返回这份完整转录（`{type:"message", timestamp, message}` 条目），
+   上游于是读到整段会话，cursor 命中后只 `append` 新增部分；
+3. 其它事件仍把 `getBranch` 置为 `undefined`，行为与之前一致。
+
+转录镜像在 `~/.hindsight/pi-desktop-transcripts/<session>.jsonl`（目录 700、文件 600，30 天未改动自动清理，
+可用 `HINDSIGHT_PI_TRANSCRIPT_DIR` 改位置）。宿主进程重启后上游 cursor 丢失，首次写回会用**完整**转录做一次 `replace`，
+而不是用残缺的后半段覆盖服务端文档。磁盘不可写时退化为仅进程内累积。
+
+验证：`tests/retain.test.mjs` 用真实的 vendored 上游对接假服务端，断言第 1 轮整段写入、之后每轮只 `append` 新 turn
+（旧实现在第 2 轮即退化为 `replace`，该测试会失败）。
 
 ## 2. 写回粒度与增量语义
 
-修好后写回粒度是“每次 run 的 messages”而非整个 session 的 entries。上游不是盲目整段覆盖：
+上游不是盲目整段覆盖：
 
 - `retainLiveSession` → `cursors` 串行化同会话写回（`vendor/hindsight-pi.mjs:17650`）
 - `writeSession` 用 `planRetain(turns, cursor, {appendSupported, …})` 决定 append 还是 replace，并推进 `paths`（`17689`）
 - 服务端是否支持幂等 append 由 `GET /v1/version` 探测（需服务端 ≥ 0.8.6）；不支持时退化为 replace
 
-因此重复轮次会被 cursor 跳过；但如果宿主在 `event.messages` 里给出的范围与期望不一致（例如只给最后一条），
-仍可能出现“写回不完整”。怀疑时用 `hindsight_sync_status` 或 diag 里的 `retain_ok.turns` 核对。
+`planRetain` 靠 cursor 里的 `turns` 数与前缀指纹判断“是否在原转录上续写”，所以**传给它的必须是整段转录**，
+这正是第 1 节修复的意义。怀疑写回异常时，用 `hindsight_sync_status`，或看 diag 里 `retain_ok.turns`：
+修复后它应随会话单调增长（修复前是每轮各自的小数字，如 37、4、37、14）。
 
 ## 3. `cwd` 缺失会静默回落到启动目录
 
