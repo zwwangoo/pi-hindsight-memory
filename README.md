@@ -10,7 +10,7 @@
 | 项 | 值 |
 | --- | --- |
 | 插件 id | `local.hindsight.memory` |
-| 版本 | `0.2.0` |
+| 版本 | `0.2.1` |
 | 权限 | `agent.extension`（高风险）、`ui.view`、`ui.panel` |
 | 上游版本 | `@vectorize-io/hindsight-coding-agents@0.8.1`（`vendor/UPSTREAM_VERSION`） |
 | 配置 / 日志 | `~/.hindsight/coding-agent.json`、`~/.hindsight/coding-agents-logs/` |
