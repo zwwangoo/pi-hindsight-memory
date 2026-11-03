@@ -2,6 +2,15 @@
 
 上游配置由 `src/core/config.ts`（打包后位于 `vendor/hindsight-pi.mjs:16031-16420`）解析。
 
+## 插件默认值与上游默认值
+
+少数字段的插件默认值刻意不同于上游，在 `src/panel/fields.mjs` 里带 `env`：
+插件加载时（`src/plugin-defaults.mjs`）把该默认值设为对应环境变量，而环境变量是上游配置的**最低优先级层**，
+所以 `coding-agent.json` 里写了的值（或真实的环境变量）始终优先，且后台 deepen 子进程会继承同一默认。
+`tests/plugin-defaults.test.mjs` 用真实的上游 deepen 对接假服务端验证了这条优先级。
+
+目前只有 `pageTriggerCron`（见下表）。
+
 ## 配置文件与优先级
 
 1. 配置文件路径：`$HINDSIGHT_CONFIG`，否则 `~/.hindsight/coding-agent.json`
@@ -34,7 +43,8 @@
 | `reflectBudget` | `high` | reflect 预算，服务端只接受 `low` / `mid` / `high`（自动注入固定用 `low`） |
 | `pageSearchLimit` | `10` | 检索返回页数 |
 | `pageRefreshEveryTurns` | `1` | 每 N 轮注入 `<hindsight_knowledge_refresh>` 页目录；上游是 `raw.x || 1`，所以 0 等价于 1（面板最小 1） |
-| `pageTriggerType` / `pageTriggerCron` | `cron` / `H * * * *` | 页面重建触发；`H` 按 bank+page 哈希分散 |
+| `pageTriggerType` | `cron` | `cron` \| `auto-refresh`（每次 consolidation 后重建，最耗）\| `manual`（不自动重建）。**面板可编辑**；每张页每次重建约 10 次 LLM 调用。设置经后台 deepen 同步到服务端已有页面（需 `autoSeed` 开启，下次会话开始时生效） |
+| `pageTriggerCron` | **`H H * * *`（每天一次，插件默认）**；上游默认是 `H * * * *`（每小时） | 仅 `pageTriggerType=cron` 时生效；5 段 cron，`H` 按 bank+page 哈希分散，`H(lo-hi)` 限定范围（如 `H H(0-5) * * *` = 每晚一次）。面板会拒绝上游会静默回落成默认值的非法 `H` 写法；保存空值会写入插件默认。**为什么改默认**：每张页每次重建约 10 次 LLM 调用，实测每小时重建占一个 bank 全部 LLM 请求的约 73%。想要旧行为就在面板里填 `H * * * *`。 |
 | `pages` / `customPages` | 5 张固定页 | 5 张：Component map、Core concepts、Conventions and patterns、Key decisions and rationale、Initiatives and enhancements；`pages.<name>=false` 可关，`customPages` 可加 |
 | `autoSeed` / `seedLimit` | `true` / `300` | `autoSeed` 开：git 仓库里每次会话开始都跑后台 deepen（空库冷启动播种，否则补齐新提交/新对话）；关：完全不跑后台 deepen。`seedLimit` 是 deepen 读取的提交条数，`|| 300`，所以 0 等价 300（面板最小 1） |
 | `codebaseSurvey` | `true` | 调本机 claude / codex / agy / opencode 之一采样仓库生成 `repository-*` 文档；找不到 CLI 就静默不产出；会花钱（`surveyBudgetUsd`，默认 2） |

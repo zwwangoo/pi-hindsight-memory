@@ -15,7 +15,12 @@ import os from "node:os";
 import path from "node:path";
 import hindsight from "../vendor/hindsight-pi.mjs";
 import { ensureNodeOnPath } from "./node-path.mjs";
+import { applyPluginDefaults } from "./plugin-defaults.mjs";
 import { createTranscriptStore } from "./transcript-store.mjs";
+
+// Plugin defaults must be in process.env before the upstream factory resolves its config (and
+// before it spawns the deepen child, which inherits them). See src/plugin-defaults.mjs.
+applyPluginDefaults();
 
 // Module load precedes the factory call that triggers the first background seed.
 export const nodePathStatus = ensureNodeOnPath();

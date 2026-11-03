@@ -292,3 +292,43 @@ test("a pre-existing broken optInOnly does not block unrelated saves", () => {
   saveConfig({ bankId: "test-bank" });
   assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).bankId, "test-bank");
 });
+
+// --- knowledge-page refresh trigger -------------------------------------------------------
+
+test("pageTriggerCron accepts plain and hashed crons, normalises spacing, rejects what upstream would silently drop", () => {
+  const cron = FIELD_BY_KEY.get("pageTriggerCron");
+  assert.equal(coerceField(cron, "H H * * *"), "H H * * *");
+  assert.equal(coerceField(cron, "  H   H(0-5)  *  *  * "), "H H(0-5) * * *");
+  assert.equal(coerceField(cron, "0 3 * * 1-5"), "0 3 * * 1-5");
+  assert.equal(coerceField(cron, ""), "H H * * *", "empty is stored as the plugin default, never as upstream's hourly");
+  for (const bad of ["H H * *", "H H * * * *", "H(5-1) * * * *", "H(0-99) * * * *", "Hx * * * *", "H H * * $"]) {
+    assert.throws(() => coerceField(cron, bad), FieldError, bad);
+  }
+});
+
+test("pageTriggerType is an enum and pageTriggerCron only applies while it is cron", () => {
+  const type = FIELD_BY_KEY.get("pageTriggerType");
+  for (const ok of ["cron", "auto-refresh", "manual"]) assert.equal(coerceField(type, ok), ok);
+  assert.throws(() => coerceField(type, "hourly"), FieldError);
+  assert.deepEqual(FIELD_BY_KEY.get("pageTriggerCron").dependsOn, { key: "pageTriggerType", in: ["cron"] });
+  assert.equal(type.default, "cron");
+  // Plugin default (once a day) deliberately differs from upstream's hourly; see plugin-defaults.test.mjs.
+  assert.equal(FIELD_BY_KEY.get("pageTriggerCron").default, "H H * * *");
+});
+
+test("saving the page trigger round-trips and keeps unrelated keys", () => {
+  const { file } = tempConfigFile(JSON.stringify(SAMPLE));
+  const view = saveConfig({ pageTriggerType: "cron", pageTriggerCron: "H H * * *" });
+  assert.equal(view.values.pageTriggerCron, "H H * * *");
+  const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.equal(saved.pageTriggerType, "cron");
+  assert.equal(saved.pageTriggerCron, "H H * * *");
+  assert.equal(saved.bankId, "test-bank");
+  assert.throws(
+    () => saveConfig({ pageTriggerCron: "every day" }),
+    (e) => e.code === "INVALID_CONFIG" && Boolean(e.fields.pageTriggerCron),
+  );
+  // Inactive (manual) cron is still validated but not rejected for being inactive.
+  saveConfig({ pageTriggerType: "manual", pageTriggerCron: "0 4 * * *" });
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).pageTriggerCron, "0 4 * * *");
+});

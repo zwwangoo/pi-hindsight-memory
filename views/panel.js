@@ -902,7 +902,7 @@ function renderField(field) {
     <p class="field-note">${esc(secretNote(field))}</p>`;
   } else {
     const placeholder = localized(field.placeholder);
-    const monoTokens = /(apiUrl|bankId|bankIdTemplate|url)/i.test(key) ? " is-mono" : "";
+    const monoTokens = /(apiUrl|bankId|bankIdTemplate|url|cron)/i.test(key) ? " is-mono" : "";
     control = `<input class="ctl-input${monoTokens}" id="cfg-${idSafe}" type="text" value="${esc(
       value,
     )}" placeholder="${esc(placeholder)}" aria-describedby="${describedBy}" data-field="${idSafe}"${

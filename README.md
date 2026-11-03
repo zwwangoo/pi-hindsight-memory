@@ -51,7 +51,7 @@
 
 | 标签页 | 内容 |
 | --- | --- |
-| **配置** | 20 个字段分 5 组；逐字段校验；有依赖的字段（如 `reflectTimeoutMs` 仅在 `autoInject=reflect` 生效）按当前未保存值实时置灰 |
+| **配置** | 22 个字段分 5 组；逐字段校验；有依赖的字段（如 `reflectTimeoutMs` 仅在 `autoInject=reflect` 生效）按当前未保存值实时置灰 |
 | **记忆库** | 页列表 + 搜索 + 阅读区 |
 | **诊断** | 服务端 / bank / 版本 / 延迟 / 页数 / 文档统计 / 未完成抽取 / token 掩码，以及 reflect 提问（low/mid/high） |
 
@@ -87,6 +87,7 @@
 ├── main.js                  # 插件进程入口：onPanelInvoke 分发 7 个通道 + 「打开面板」命令
 ├── src/
 │   ├── index.mjs            # agent 扩展入口：PATH 适配 + 转录适配
+│   ├── plugin-defaults.mjs  # 与上游不同的插件默认值（作为最低优先级环境变量层）
 │   ├── transcript-store.mjs # 按会话累积转录（内存 + 本地 jsonl 镜像）
 │   ├── node-path.mjs        # 让后台 `node` 可解析
 │   └── panel/

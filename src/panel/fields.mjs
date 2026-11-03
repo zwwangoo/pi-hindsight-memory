@@ -142,6 +142,37 @@ export const FIELDS = [
     },
   },
   {
+    key: "pageTriggerType",
+    group: "injection",
+    type: "enum",
+    enum: ["cron", "auto-refresh", "manual"],
+    default: "cron",
+    label: { en: "Page refresh trigger", "zh-CN": "知识页刷新触发" },
+    help: {
+      en: "When the server rebuilds the knowledge pages (each rebuild costs ~10 LLM calls per page): cron = on the schedule below · auto-refresh = after every consolidation (heaviest) · manual = never automatically. The setting reaches the server's existing pages when the background deepen runs at the next session start (needs Auto seed on).",
+      "zh-CN": "服务端何时重建知识页（每张页每次重建约 10 次 LLM 调用）：cron = 按下方计划 · auto-refresh = 每次 consolidation 后（最耗） · manual = 不自动重建。该设置在下次会话开始、后台 deepen 运行时同步到服务端已有的页面（需开启「自动播种」）。",
+    },
+  },
+  {
+    key: "pageTriggerCron",
+    group: "injection",
+    type: "string",
+    format: "cron",
+    // Deliberately not upstream's hourly `H * * * *`: each page rebuild costs ~10 LLM calls and hourly
+    // rebuilds were ~73% of all LLM requests on a real bank. `env` makes this a real default, not a
+    // label: src/plugin-defaults.mjs exports it as the lowest-priority config layer, so a value in
+    // coding-agent.json still wins.
+    default: "H H * * *",
+    env: "HINDSIGHT_PAGE_TRIGGER_CRON",
+    placeholder: "H H * * *",
+    dependsOn: { key: "pageTriggerType", in: ["cron"] },
+    label: { en: "Page refresh schedule", "zh-CN": "知识页刷新计划" },
+    help: {
+      en: "5-field cron (minute hour day month weekday). `H` is a per-page hash that spreads pages over the range, `H(lo-hi)` restricts it. Plugin default `H H * * *` = once a day (upstream's own default `H * * * *` = hourly costs ~24x more LLM calls); `H H(0-5) * * *` = once a night. Saving an empty value stores the plugin default.",
+      "zh-CN": "5 段 cron（分 时 日 月 周）。`H` 按页哈希分散到取值范围内，`H(lo-hi)` 限定范围。插件默认 `H H * * *` = 每天一次（上游自带默认 `H * * * *` = 每小时，LLM 调用约多 24 倍）；`H H(0-5) * * *` = 每晚一次。保存空值会写入插件默认值。",
+    },
+  },
+  {
     key: "retainSessions",
     group: "retention",
     type: "boolean",
@@ -288,6 +319,38 @@ export function fieldDefaults() {
   return out;
 }
 
+// Mirrors upstream's parseHashedCron (vendor/hindsight-pi.mjs): upstream silently falls back to the
+// hourly default on a malformed `H` field, so the panel rejects it up front. Plain fields are only
+// shape-checked; the server owns full cron semantics.
+const CRON_RANGES = [
+  [0, 59],
+  [0, 23],
+  [1, 31],
+  [1, 12],
+  [0, 6],
+];
+const CRON_PLAIN = /^[0-9A-Za-z*?,\-/]+$/;
+
+/** Returns an error message, or "" when `cron` is acceptable. */
+function cronProblem(cron) {
+  const parts = cron.split(/\s+/);
+  if (parts.length !== CRON_RANGES.length) return "expected 5 fields: minute hour day month weekday";
+  for (const [i, part] of parts.entries()) {
+    if (part.startsWith("H")) {
+      const m = /^H(?:\((\d+)-(\d+)\))?$/.exec(part);
+      if (!m) return `field ${i + 1}: write H or H(lo-hi)`;
+      if (m[1] !== undefined) {
+        const [lo, hi] = [Number(m[1]), Number(m[2])];
+        const [min, max] = CRON_RANGES[i];
+        if (lo > hi || lo < min || hi > max) return `field ${i + 1}: H(lo-hi) must stay within ${min}-${max}`;
+      }
+    } else if (!CRON_PLAIN.test(part)) {
+      return `field ${i + 1}: unexpected characters`;
+    }
+  }
+  return "";
+}
+
 export class FieldError extends Error {
   constructor(message) {
     super(message);
@@ -328,6 +391,12 @@ export function coerceField(field, value) {
         }
         if (u.protocol !== "http:" && u.protocol !== "https:") throw new FieldError("must start with http:// or https://");
         return s.replace(/\/+$/, "");
+      }
+      if (field.format === "cron") {
+        if (!s) return field.default; // empty would make upstream fall back to its hourly default
+        const problem = cronProblem(s);
+        if (problem) throw new FieldError(problem);
+        return s.split(/\s+/).join(" ");
       }
       if (field.format === "bankId") {
         if (!/^[A-Za-z0-9._:-]{0,128}$/.test(s)) throw new FieldError("only A-Z a-z 0-9 . _ : - (max 128)");
