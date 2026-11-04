@@ -6,12 +6,18 @@
   "engines": {
     "piDesktop": ">=0.17.0"
   },
-  "description": "Long-term project memory for PI-Desktop: wraps the official @vectorize-io/hindsight-coding-agents@0.8.1 pi extension (auto recall + write-back) with a getBranch fix, and adds a work-panel view to edit ~/.hindsight/coding-agent.json and browse the memory bank.",
+  "description": "Long-term project memory for PI-Desktop: wraps the official @vectorize-io/hindsight-coding-agents@0.8.1 pi extension (auto recall and write-back), keeps each session's full transcript so write-back appends instead of overwriting, and adds a work panel to edit ~/.hindsight/coding-agent.json and browse the memory bank.",
   "author": "local",
   "i18n": {
+    "en": {
+      "name": "Hindsight Memory",
+      "description": "Long-term project memory for PI-Desktop: wraps the official @vectorize-io/hindsight-coding-agents@0.8.1 pi extension (auto recall and write-back), keeps each session's full transcript so write-back appends instead of overwriting, and adds a work panel to edit ~/.hindsight/coding-agent.json and browse the memory bank.",
+      "safetyNotes": "Sends your conversations (user and assistant text, plus the name and one target argument of each tool call, never tool output) to the Hindsight server set in ~/.hindsight/coding-agent.json, and injects recalled memories into the system prompt. Keeps a local transcript copy under ~/.hindsight/pi-desktop-transcripts/ (owner-only, deleted after 30 days; not written when write-back is off). The panel reads and edits ~/.hindsight/coding-agent.json (a timestamped backup is made before each save; the API token is masked in the UI). Network access goes only to the configured Hindsight server. The background deepen step may read the project's git history."
+    },
     "zh-CN": {
       "name": "Hindsight Memory",
-      "description": "PI-Desktop 的长期项目记忆：包装官方 @vectorize-io/hindsight-coding-agents@0.8.1 的 pi 扩展（自动召回 + 写回），修掉 getBranch 兼容问题，并新增工作面板用于编辑 ~/.hindsight/coding-agent.json 和浏览记忆库。"
+      "description": "PI-Desktop 的长期项目记忆：包装官方 @vectorize-io/hindsight-coding-agents@0.8.1 的 pi 扩展（自动召回 + 写回），按会话保留完整转录让写回只追加不覆盖，并提供工作面板用于编辑 ~/.hindsight/coding-agent.json 和浏览记忆库。",
+      "safetyNotes": "会把你的对话（用户与助手的文本，以及每次工具调用的名称和一个目标参数，不含工具输出）发送到 ~/.hindsight/coding-agent.json 中配置的 Hindsight 服务端，并把召回的记忆注入系统提示。会在本地 ~/.hindsight/pi-desktop-transcripts/ 保留转录副本（仅所有者可读，30 天后删除；关闭写回时不会写入）。面板读取并编辑 ~/.hindsight/coding-agent.json（每次保存前生成带时间戳的备份，界面中 API Token 已打码）。网络只访问所配置的 Hindsight 服务端。后台 deepen 步骤可能读取项目的 git 历史。"
     }
   },
   "main": "main.js",
