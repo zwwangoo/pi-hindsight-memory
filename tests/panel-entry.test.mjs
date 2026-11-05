@@ -82,3 +82,32 @@ test("a handler failure is turned into an envelope instead of rejecting", async 
   assert.equal(result.error.code, "OFFLINE");
   assert.equal(typeof result.error.hint, "string");
 });
+
+test("bank.usage returns aggregated stats through the panel envelope", async () => {
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    bank_id: "test-bank", period: "7d", trunc: "day", start: "2026-11-01T00:00:00Z", buckets: [],
+  }), { headers: { "content-type": "application/json" } });
+  const result = await plugin.onPanelInvoke("hindsight.bank.usage", { period: "7d" });
+  assert.equal(result.ok, true);
+  assert.equal(result.totals.requests, 0);
+  const invalid = await plugin.onPanelInvoke("hindsight.bank.usage", { period: "forever" });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error.code, "INVALID_CONFIG");
+});
+
+test("model usage and price channels are routed through the panel envelope", async () => {
+  process.env.HINDSIGHT_PRICES = path.join(path.dirname(file), "prices.json");
+  globalThis.fetch = async () => new Response(JSON.stringify({ total: 1, items: [{ id: "x1", started_at: new Date().toISOString(), model: "m", input_tokens: 1, output_tokens: 1 }] }), { headers: { "content-type": "application/json" } });
+  const models = await plugin.onPanelInvoke("hindsight.bank.usageModels", { period: "7d", refresh: true });
+  assert.equal(models.ok, true);
+  assert.equal(models.models[0].model, "m");
+  const saved = await plugin.onPanelInvoke("hindsight.prices.save", { prices: { models: { m: { input: 1, output: 2 } } } });
+  assert.equal(saved.ok, true);
+  assert.equal((await plugin.onPanelInvoke("hindsight.prices.read")).prices.models.m.output, 2);
+  const sug = await plugin.onPanelInvoke("hindsight.prices.suggest", { models: ["deepseek-flash"] });
+  assert.equal(sug.ok, true);
+  assert.equal(sug.suggestions["deepseek-flash"].input, 0.15);
+  const bad = await plugin.onPanelInvoke("hindsight.prices.save", { prices: { models: { m: { input: "x" } } } });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.error.code, "INVALID_CONFIG");
+});

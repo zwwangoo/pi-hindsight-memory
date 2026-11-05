@@ -53,7 +53,8 @@
 | --- | --- |
 | **配置** | 22 个字段分 5 组；逐字段校验；有依赖的字段（如 `reflectTimeoutMs` 仅在 `autoInject=reflect` 生效）按当前未保存值实时置灰 |
 | **记忆库** | 页列表 + 搜索 + 阅读区 |
-| **诊断** | 服务端 / bank / 版本 / 延迟 / 页数 / 文档统计 / 未完成抽取 / token 掩码，以及 reflect 提问（low/mid/high） |
+| **统计** | 文档统计；最近 1 / 7 / 30 天 LLM 请求与 token 用量（按天/小时分布，新的在上）；按模型的请求与 token，并可估算费用（服务端不返回价格：单价统一为美元/每百万 token，可一键从随插件发布的价格目录填入，也可手填；单价存于 `~/.hindsight/pi-desktop-prices.json`，不改动 `coding-agent.json`） |
+| **诊断** | 服务端 / bank / 版本 / 延迟 / 页数 / 未完成抽取 / token 掩码，以及 reflect 提问（low/mid/high） |
 
 - 视图只通过 `window.pluginBridge.invoke("hindsight.*")` 与 `main.js` 通信（CSP `connect-src 'none'`）。
 - token 只在插件进程内使用，视图永远拿到掩码；回传掩码 = 不变，回传空串 = 清除。
@@ -72,6 +73,11 @@
 | `hindsight.config.read` | `{}` | `{path, exists, parseError, values, sources, unknownKeys, fields, groups}` |
 | `hindsight.config.save` | `{patch}` | 同上 + `backupPath` |
 | `hindsight.bank.status` | `{}` | `{bank, apiUrl, version, latencyMs, pages, documents, activeOperations, tokenMasked, warnings}` |
+| `hindsight.bank.usage` | `{period?: "1d" | "7d" | "30d"}` | `{bank, period, start, trunc, retentionDays?, totals:{requests, statuses, tokens:{input, output, cached, thoughts, total}}, buckets:[{time, requests, statuses, tokens}]}` |
+| `hindsight.bank.usageModels` | `{period?, refresh?, cacheOnly?}` | `{period, cold, updatedAt, scanned, partial, since?, models:[{model, provider, requests, missing, tokens:{input, output, cached, thoughts}}]}`。明细接口每条调用都带完整 prompt（约 20 MB/500 条，5–11 秒），所以首次同步一次读取最近 30 天（最多 6 页×500 条，超出则 `partial` 并给出 `since`），只把计数按「小时×模型」写入 `~/.hindsight/pi-desktop-llm-usage.json`（不含 prompt/回答），之后只拉水位线之后的新调用；`cacheOnly` 只读本地缓存，面板用它先秒出数字再同步 |
+| `hindsight.prices.read` | `{}` | `{prices:{currency:"USD", models:{[model]:{input, cached, output}}}, warning?}`（每百万 token；读到非 USD 的旧文件会忽略并给出 `warning`） |
+| `hindsight.prices.suggest` | `{models:[string]}` | `{suggestions:{[model]:{input, cached, output, vendor}}, unmatched:[string], catalogDate}`（按模型名前缀匹配原厂，不猜测） |
+| `hindsight.prices.save` | `{prices:{models}}` | `{prices}`（始终以 USD 写入）；非数字/负数返回 `INVALID_CONFIG` 并带 `fields` |
 | `hindsight.bank.pages` | `{}` | `{items:[{id, name, description?, folder?}]}` |
 | `hindsight.bank.search` | `{query, limit?}` | `{items:[{id, name, source_query?, snippet?}], query}` |
 | `hindsight.bank.read` | `{pageId}` | `{page:{id, name, description?, tags?, last_updated_at?, body}}` |
@@ -157,3 +163,8 @@ md5 与来源逐项记录在 [vendor/PROVENANCE.md](vendor/PROVENANCE.md)。上�
 - 包：`@vectorize-io/hindsight-coding-agents@0.8.1`，仓库 <https://github.com/vectorize-io/hindsight.git>
   （`hindsight-integrations/coding-agents`）。
 - 上游产物版权归原作者；npm 包未声明 `license` 字段，分发前请自行确认授权。
+
+
+## 价格目录
+
+`src/panel/price-catalog.json` 由 `node scripts/sync-prices.mjs` 从 PI-Desktop 自带的 models.dev 目录（`/Applications/PI-Desktop.app/Contents/Resources/models.dev/api.json`）抽取，仅含 deepseek / anthropic / google / openai / xai / mistral / moonshotai / zai 八家原厂的基础单价（USD/每百万 token，不含按上下文长度分档的价格）。PI-Desktop 升级、价格变动后重新运行该脚本并重新打包即可。

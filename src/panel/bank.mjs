@@ -4,6 +4,7 @@
 //   GET  {apiUrl}/v1/version                     -> { api_version }
 //   GET  {bankUrl}/documents?limit=&offset=      -> { items:[{id}], total }
 //   GET  {bankUrl}/operations                    -> { operations|items:[{status}] }
+//   GET  {bankUrl}/llm-requests/stats?period=&call_type=llm -> time buckets + token sums
 //   GET  {bankUrl}/knowledge-base/tree           -> { roots:[{id,name,kind,children}] }
 //   GET  {bankUrl}/knowledge-base/pages/{id}     -> page (body/markdown)
 //   GET  {bankUrl}/knowledge-base/search?q=&limit=
@@ -13,6 +14,7 @@
 // Everything here is read-only: no retain, no delete, no reset.
 
 import { resolveConnection } from "./config.mjs";
+import { loadEntry, saveEntry, emptyEntry } from "./usage-cache.mjs";
 import { PanelError, scrub, maskSecret } from "./errors.mjs";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled", "error"]);
@@ -136,6 +138,25 @@ function bucketDocuments(items) {
   return counts;
 }
 
+const DOC_PAGE_SIZE = 500;
+const DOC_MAX_PAGES = 20;
+
+/** All document ids of the bank, paged so a bank past 500 documents is not silently undercounted. */
+async function listDocuments(conn) {
+  const items = [];
+  let total = null;
+  for (let page = 0; page < DOC_MAX_PAGES; page += 1) {
+    const json = await request(bankUrl(conn, `/documents?limit=${DOC_PAGE_SIZE}&offset=${page * DOC_PAGE_SIZE}`), {
+      token: conn.apiToken,
+    });
+    const got = Array.isArray(json?.items) ? json.items : [];
+    if (Number.isFinite(Number(json?.total))) total = Number(json.total);
+    items.push(...got);
+    if (got.length < DOC_PAGE_SIZE || (total !== null && items.length >= total)) break;
+  }
+  return { items, total: total ?? items.length };
+}
+
 async function serverVersion(conn) {
   try {
     const json = await request(`${conn.apiUrl}/v1/version`, { token: conn.apiToken, timeoutMs: 8000 });
@@ -165,7 +186,7 @@ export async function status() {
   };
 
   const [docs, activeOperations, pages] = await Promise.all([
-    settle("documents", () => request(bankUrl(conn, "/documents?limit=500&offset=0"), { token: conn.apiToken }), null),
+    settle("documents", () => listDocuments(conn), null),
     settle(
       "operations",
       async () => {
@@ -184,14 +205,14 @@ export async function status() {
     throw failures.find((e) => e?.code === "OFFLINE" || e?.code === "TIMEOUT") ?? failures[0];
   }
 
-  const items = Array.isArray(docs?.items) ? docs.items : [];
+  const items = docs ? docs.items : [];
   return {
     bank: conn.bankId,
     apiUrl: conn.apiUrl,
     version,
     latencyMs: Date.now() - started,
     pages,
-    documents: docs === null ? null : { total: Number(docs?.total ?? items.length), ...bucketDocuments(items) },
+    documents: docs === null ? null : { total: docs.total, ...bucketDocuments(items) },
     activeOperations,
     tokenMasked: maskSecret(conn.apiToken),
     warnings,
@@ -270,4 +291,234 @@ export async function reflect(query, budget) {
     timeoutMs,
   });
   return { text: String(json?.text ?? "").trim(), budget: chosen, ms: Date.now() - started };
+}
+
+const USAGE_PERIODS = new Set(["1d", "7d", "30d"]);
+const TOKEN_FIELDS = ["input", "output", "cached", "thoughts", "total"];
+
+function usageNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/** `hindsight.bank.usage` — independent of status so older servers only lose this section. */
+export async function usage(period = "7d") {
+  if (!USAGE_PERIODS.has(period)) {
+    throw new PanelError("INVALID_CONFIG", "用量周期必须是 1d、7d 或 30d");
+  }
+  const conn = resolveConnection();
+  let json;
+  try {
+    json = await request(bankUrl(conn, `/llm-requests/stats?period=${period}&call_type=llm`), { token: conn.apiToken });
+  } catch (e) {
+    if (e?.code === "NOT_FOUND") {
+      throw new PanelError("NOT_FOUND", "LLM 用量接口或 bank 不存在（404）", {
+        hint: "确认 bankId 已创建，且 Hindsight 服务端支持 /llm-requests/stats；旧版本需升级后查看 LLM 用量。",
+      });
+    }
+    throw e;
+  }
+  if (!Array.isArray(json?.buckets)) {
+    throw new PanelError("HTTP_ERROR", "服务端未返回有效的 LLM 用量统计");
+  }
+  const buckets = json.buckets.map((bucket) => {
+    if (usageNumber(bucket?.total) === null || typeof bucket?.time !== "string") {
+      throw new PanelError("HTTP_ERROR", "服务端返回的 LLM 用量时间桶无效");
+    }
+    return {
+      time: bucket.time,
+      requests: bucket.total,
+      statuses: Object.fromEntries(Object.entries(bucket.statuses ?? {}).filter(([, count]) => usageNumber(count) !== null)),
+      tokens: Object.fromEntries(TOKEN_FIELDS.map((field) => [field, usageNumber(bucket.tokens?.[field])])),
+    };
+  });
+  const statuses = new Map();
+  for (const bucket of buckets) {
+    for (const [name, count] of Object.entries(bucket.statuses)) {
+      statuses.set(name, (statuses.get(name) ?? 0) + count);
+    }
+  }
+  return {
+    bank: conn.bankId,
+    period,
+    start: typeof json.start === "string" ? json.start : null,
+    trunc: json.trunc === "hour" ? "hour" : "day",
+    ...(Object.hasOwn(json, "retention_days") ? { retentionDays: usageNumber(json.retention_days) } : {}),
+    totals: {
+      requests: buckets.reduce((sum, bucket) => sum + bucket.requests, 0),
+      statuses: Object.fromEntries(statuses),
+      // Cached/reasoning counters may overlap provider totals: never add them to total.
+      // If any bucket lacks a counter, its aggregate is unknown rather than an undercount.
+      tokens: Object.fromEntries(TOKEN_FIELDS.map((field) => [field,
+        buckets.some((bucket) => bucket.tokens[field] === null)
+          ? null : buckets.reduce((sum, bucket) => sum + bucket.tokens[field], 0),
+      ])),
+    },
+    buckets,
+  };
+}
+
+const PERIOD_DAYS = { "1d": 1, "7d": 7, "30d": 30 };
+const WINDOW_DAYS = 30;
+const MODEL_PAGE_SIZE = 500;
+// A page of /llm-requests carries full prompts (~20 MB per 500 calls, 5–11 s), so one sync is capped.
+// Whatever a capped sync leaves out is reported as `since` instead of being under-counted silently.
+const MODEL_MAX_PAGES = 6;
+const MODEL_PAGE_TIMEOUT_MS = 60_000;
+const MODEL_THROTTLE_MS = 15_000;
+const PENDING = new Set(["pending", "running", "queued", "in_progress"]);
+const inflight = new Map();
+const lastSync = new Map();
+
+function hourKey(ms) {
+  return new Date(ms).toISOString().slice(0, 13);
+}
+
+function addCall(entry, item, startedMs) {
+  const hour = (entry.hours[hourKey(startedMs)] ??= {});
+  const model = typeof item?.model === "string" && item.model ? item.model : "unknown";
+  const row = (hour[model] ??= {
+    provider: typeof item?.provider === "string" ? item.provider : "",
+    requests: 0,
+    missing: 0,
+    input: 0,
+    output: 0,
+    cached: 0,
+    thoughts: 0,
+  });
+  row.requests += 1;
+  for (const [field, source] of [["input", "input_tokens"], ["output", "output_tokens"], ["cached", "cached_tokens"], ["thoughts", "thoughts_tokens"]]) {
+    const n = usageNumber(item?.[source]);
+    if (n === null) row.missing += 1;
+    else row[field] += n;
+  }
+}
+
+/** Bring the local aggregate up to date; only calls newer than the watermark are downloaded. */
+async function syncModels(conn, key) {
+  const now = Date.now();
+  const windowStart = now - WINDOW_DAYS * 86_400_000;
+  let entry = loadEntry(key);
+  const mark = entry.watermark ? Date.parse(entry.watermark) : NaN;
+  const startMs = Number.isFinite(mark) && mark >= windowStart ? mark : windowStart;
+  if (!(Number.isFinite(mark) && mark >= windowStart)) entry = { ...emptyEntry() };
+
+  const fresh = [];
+  let pendingMin = Infinity;
+  let maxStarted = Number.isFinite(mark) ? mark : -Infinity;
+  let oldestFetched = Infinity;
+  let capped = false;
+  const startDate = encodeURIComponent(new Date(startMs).toISOString());
+  const counted = { ...entry.ids };
+
+  for (let page = 0; page < MODEL_MAX_PAGES; page += 1) {
+    let json;
+    try {
+      json = await request(
+        bankUrl(conn, `/llm-requests?start_date=${startDate}&limit=${MODEL_PAGE_SIZE}&offset=${page * MODEL_PAGE_SIZE}`),
+        { token: conn.apiToken, timeoutMs: MODEL_PAGE_TIMEOUT_MS },
+      );
+    } catch (e) {
+      if (e?.code === "NOT_FOUND") {
+        throw new PanelError("NOT_FOUND", "LLM 调用明细接口或 bank 不存在（404）", {
+          hint: "确认 bankId 已创建，且服务端已开启 LLM 请求追踪（HINDSIGHT_API_LLM_TRACE_ENABLED）。",
+        });
+      }
+      throw e;
+    }
+    if (!Array.isArray(json?.items)) {
+      throw new PanelError("HTTP_ERROR", "服务端未返回有效的 LLM 调用明细");
+    }
+    for (const item of json.items) {
+      const id = typeof item?.id === "string" ? item.id : "";
+      const started = Date.parse(item?.started_at);
+      const startedMs = Number.isFinite(started) ? started : now;
+      oldestFetched = Math.min(oldestFetched, startedMs);
+      if (id && counted[id] !== undefined) continue;
+      if (PENDING.has(String(item?.status ?? "").toLowerCase())) {
+        // Not finished: its tokens are still unknown. Hold the watermark back so it is re-read.
+        pendingMin = Math.min(pendingMin, startedMs);
+        continue;
+      }
+      fresh.push([item, startedMs, id]);
+      if (id) counted[id] = startedMs;
+      maxStarted = Math.max(maxStarted, startedMs);
+    }
+    if (json.items.length < MODEL_PAGE_SIZE) break;
+    if (page === MODEL_MAX_PAGES - 1) capped = true;
+  }
+
+  if (capped) {
+    // Newest-first paging: the older part of the gap was not read, so keep only what is contiguous.
+    entry = { ...emptyEntry(), from: new Date(oldestFetched).toISOString() };
+    for (const id of Object.keys(counted)) delete counted[id];
+    for (const [, startedMs, id] of fresh) if (id) counted[id] = startedMs;
+  }
+  for (const [item, startedMs] of fresh.filter(([, ms]) => !capped || ms >= oldestFetched)) {
+    addCall(entry, item, startedMs);
+  }
+
+  const watermark = Number.isFinite(pendingMin) ? pendingMin : maxStarted;
+  if (Number.isFinite(watermark)) {
+    entry.watermark = new Date(watermark).toISOString();
+    for (const [id, ms] of Object.entries(counted)) if (ms < watermark) delete counted[id];
+  }
+  entry.ids = counted;
+  // Hours that fell out of the 30-day window are dead weight.
+  const keepFrom = hourKey(windowStart);
+  for (const hour of Object.keys(entry.hours)) if (hour < keepFrom) delete entry.hours[hour];
+  entry.updatedAt = now;
+  saveEntry(key, entry);
+  return entry;
+}
+
+/** `hindsight.bank.usageModels` — per-model request and token totals, read incrementally. */
+export async function usageModels(period = "7d", { refresh = false, cacheOnly = false } = {}) {
+  if (!USAGE_PERIODS.has(period)) {
+    throw new PanelError("INVALID_CONFIG", "用量周期必须是 1d、7d 或 30d");
+  }
+  const conn = resolveConnection();
+  const key = `${conn.apiUrl}|${conn.bankId}`;
+
+  if (cacheOnly) {
+    /* answer from disk only: lets the panel paint instantly, then sync in a second call */
+  } else if (inflight.has(key)) {
+    await inflight.get(key).catch(() => {});
+  } else if (refresh || Date.now() - (lastSync.get(key) ?? 0) > MODEL_THROTTLE_MS) {
+    const job = syncModels(conn, key).finally(() => inflight.delete(key));
+    inflight.set(key, job);
+    await job;
+    lastSync.set(key, Date.now());
+  }
+
+  const entry = loadEntry(key);
+  const cutoff = Date.now() - PERIOD_DAYS[period] * 86_400_000;
+  const floorHour = hourKey(cutoff);
+  const byModel = new Map();
+  for (const [hour, models] of Object.entries(entry.hours)) {
+    if (hour < floorHour) continue;
+    for (const [model, row] of Object.entries(models)) {
+      const sum = byModel.get(model) ?? {
+        model,
+        provider: row.provider,
+        requests: 0,
+        missing: 0,
+        tokens: { input: 0, output: 0, cached: 0, thoughts: 0 },
+      };
+      sum.requests += row.requests;
+      sum.missing += row.missing;
+      for (const field of ["input", "output", "cached", "thoughts"]) sum.tokens[field] += row[field];
+      byModel.set(model, sum);
+    }
+  }
+  const models = [...byModel.values()].sort((a, b) => b.requests - a.requests);
+  const fromMs = entry.from ? Date.parse(entry.from) : NaN;
+  return {
+    period,
+    cold: entry.watermark === null,
+    updatedAt: entry.updatedAt || null,
+    scanned: models.reduce((total, row) => total + row.requests, 0),
+    partial: Number.isFinite(fromMs) && fromMs > cutoff,
+    ...(Number.isFinite(fromMs) && fromMs > cutoff ? { since: entry.from } : {}),
+    models,
+  };
 }

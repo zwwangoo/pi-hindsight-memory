@@ -1381,25 +1381,48 @@ textarea:disabled {
 
 /* ---------------------------------------------------------- diagnostics */
 
-.diag-section + .diag-section {
-  margin-top: var(--ds-space-4);
+.diag-group + .diag-group {
+  margin-top: 26px;
+}
+
+.diag-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  min-height: 34px;
+  margin: 0 0 var(--ds-space-3);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.diag-group-title {
+  margin: 0;
+  color: var(--ds-text);
+  font-size: var(--ds-text-base);
+  font-weight: 600;
+}
+
+.diag-group-head .select-wrap {
+  flex: 0 0 112px;
+  width: 112px;
+}
+
+.diag-total {
+  color: var(--ds-text-3);
+  font-size: var(--ds-text-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .diag-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
   margin: 0 0 6px;
   font-size: var(--ds-text-xs);
   font-weight: 600;
   color: var(--ds-text-2);
 }
 
-.diag-heading .muted {
+.muted {
   color: var(--ds-text-3);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
 }
 
 .diag-grid {
@@ -1421,7 +1444,7 @@ textarea:disabled {
 .diag-label {
   margin: 0 0 2px;
   color: var(--ds-text-3);
-  font-size: 9.5px;
+  font-size: 10.5px;
   letter-spacing: 0.01em;
 }
 
@@ -1477,7 +1500,7 @@ textarea:disabled {
 
 .doc-row {
   display: grid;
-  grid-template-columns: 86px minmax(40px, 1fr) 58px;
+  grid-template-columns: 124px minmax(40px, 1fr) 58px;
   align-items: center;
   gap: var(--ds-space-2);
   padding: 3px 0;
@@ -1685,6 +1708,18 @@ textarea:disabled {
   padding-top: 2px;
 }
 
+.diag-sk-grid {
+  height: 64px;
+}
+
+.diag-sk-block {
+  height: 132px;
+}
+
+.reflect-error {
+  margin-top: 8px;
+}
+
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 700px) {
@@ -1763,7 +1798,7 @@ textarea:disabled {
   }
 
   .doc-row {
-    grid-template-columns: 74px minmax(30px, 1fr) 48px;
+    grid-template-columns: 108px minmax(30px, 1fr) 48px;
   }
 
   .diag-grid {
@@ -1876,4 +1911,262 @@ textarea:disabled {
 .num-wrap input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* --------------------------------------------------------------- LLM usage */
+
+.stats-block {
+  transition: opacity var(--ds-dur-fast) var(--ds-ease);
+}
+
+.stats-models {
+  margin-top: var(--ds-space-4);
+}
+
+.stats-models .diag-heading {
+  margin-bottom: 8px;
+}
+
+/* Previous numbers stay visible (dimmed) while a new period loads. */
+.diag-group[aria-busy="true"] .stats-block {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.usage-note {
+  margin: 6px 0 0;
+  color: var(--ds-text-3);
+  font-size: var(--ds-text-xs);
+}
+
+.stats-block > .usage-note:first-child {
+  margin-top: 0;
+}
+
+.usage-primary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-border);
+}
+
+.usage-stat {
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--ds-surface);
+}
+
+.usage-stat .diag-label {
+  margin-bottom: 0;
+}
+
+.usage-big {
+  margin: 0;
+  color: var(--ds-text);
+  font-family: var(--ds-font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.usage-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--ds-space-4);
+  margin-top: 8px;
+  font-size: var(--ds-text-xs);
+}
+
+.usage-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.usage-part-label {
+  color: var(--ds-text-3);
+}
+
+.usage-part b {
+  color: var(--ds-text);
+  font-family: var(--ds-font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-statuses {
+  margin-top: 8px;
+}
+
+.usage-warning {
+  color: var(--ds-warning);
+}
+
+.usage-history {
+  margin-top: 10px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+}
+
+.usage-history summary {
+  padding: 7px 10px;
+  color: var(--ds-text-2);
+  cursor: pointer;
+  font-size: var(--ds-text-xs);
+}
+
+.usage-table-wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--ds-border);
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ds-text-xs);
+}
+
+.usage-table th,
+.usage-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--ds-border);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table tr:last-child th,
+.usage-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.usage-table th:first-child,
+.usage-table td:first-child {
+  text-align: left;
+}
+
+@media (max-width: 380px) {
+  .usage-big {
+    font-size: 17px;
+  }
+}
+
+/* ------------------------------------------------- per-model cost + prices */
+
+.usage-table-wrap.is-boxed {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface);
+}
+
+.models-table th,
+.models-table td {
+  white-space: nowrap;
+}
+
+.models-table thead th {
+  color: var(--ds-text-3);
+  font-weight: 500;
+}
+
+.models-table tbody th {
+  max-width: 150px;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.usage-cost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--ds-space-3);
+  margin-bottom: 8px;
+}
+
+.usage-cost .usage-big {
+  font-size: 18px;
+}
+
+.usage-cost .usage-note {
+  margin: 0;
+}
+
+.price-editor {
+  margin-top: 10px;
+}
+
+.price-body {
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--ds-border);
+}
+
+.price-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--ds-space-3);
+  margin: 8px 0;
+}
+
+.price-toolbar .usage-note {
+  flex: 1 1 180px;
+  margin: 0;
+}
+
+.price-row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.price-row:last-child {
+  border-bottom: 0;
+}
+
+.price-model {
+  display: block;
+  margin-bottom: 4px;
+  overflow: hidden;
+  font-size: var(--ds-text-xs);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-2);
+}
+
+.price-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ds-text-3);
+  font-size: 10.5px;
+}
+
+.price-field input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+}
+
+.price-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+@media (max-width: 380px) {
+  .price-inputs {
+    grid-template-columns: 1fr;
+  }
 }

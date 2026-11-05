@@ -14,8 +14,9 @@ function loadModules() {
     modulesPromise = Promise.all([
       import("./src/panel/config.mjs"),
       import("./src/panel/bank.mjs"),
+      import("./src/panel/prices.mjs"),
       import("./src/panel/errors.mjs"),
-    ]).then(([config, bank, errors]) => ({ config, bank, errors }));
+    ]).then(([config, bank, prices, errors]) => ({ config, bank, prices, errors }));
   }
   return modulesPromise;
 }
@@ -24,6 +25,15 @@ const HANDLERS = {
   "hindsight.config.read": ({ config }) => config.readConfig(),
   "hindsight.config.save": ({ config }, payload) => config.saveConfig(payload && payload.patch),
   "hindsight.bank.status": ({ bank }) => bank.status(),
+  "hindsight.bank.usage": ({ bank }, payload) => bank.usage(payload && payload.period),
+  "hindsight.bank.usageModels": ({ bank }, payload) =>
+    bank.usageModels(payload && payload.period, {
+      refresh: Boolean(payload && payload.refresh),
+      cacheOnly: Boolean(payload && payload.cacheOnly),
+    }),
+  "hindsight.prices.read": ({ prices }) => prices.readPrices(),
+  "hindsight.prices.suggest": ({ prices }, payload) => prices.suggestPrices(payload && payload.models),
+  "hindsight.prices.save": ({ prices }, payload) => prices.savePrices(payload && payload.prices),
   "hindsight.bank.pages": ({ bank }) => bank.listPages(),
   "hindsight.bank.search": ({ bank }, payload) => bank.search(payload && payload.query, payload && payload.limit),
   "hindsight.bank.read": ({ bank }, payload) => bank.readPage(payload && payload.pageId),

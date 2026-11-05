@@ -6,6 +6,7 @@
 const APPEARANCE_CACHE_KEY = "hindsight.panel.appearance.v1";
 const DOC_TYPES = ["git", "gitlog", "conversation", "survey", "other"];
 const BUDGETS = ["low", "mid", "high"];
+const USAGE_PERIODS = ["1d", "7d", "30d"];
 
 const STRINGS = {
   "zh-CN": {
@@ -18,6 +19,7 @@ const STRINGS = {
     "tabs.label": "面板视图",
     "tab.config": "配置",
     "tab.memory": "记忆库",
+    "tab.stats": "统计",
     "tab.diagnostics": "诊断",
     "common.retry": "重试",
     "common.save": "保存",
@@ -84,8 +86,15 @@ const STRINGS = {
     "diag.token": "Token",
     "diag.documents": "文档统计",
     "diag.docTotal": "共 {n}",
-    "diag.doc.git": "Git 提交",
-    "diag.doc.gitlog": "Git 日志",
+    "diag.doc.git": "Git 提交（逐条）",
+    "diag.doc.gitlog": "Git 日志（按仓库）",
+    "diag.docHint.git": "逐条提交的深化文档（git:<sha>），只有执行过 deepen 才会有，为 0 属正常",
+    "diag.docHint.gitlog": "每个仓库一篇的提交历史摘要（gitlog:<仓库>）",
+    "diag.docHint.conversation": "已写回的对话记录",
+    "diag.docHint.survey": "代码库概览基线",
+    "diag.docHint.other": "其他来源（导入、标记等）",
+    "diag.docsUnavailable": "文档统计暂时取不到（不是 0 篇）。",
+    "diag.operationsUnknown": "抽取状态未知",
     "diag.doc.conversation": "对话",
     "diag.doc.survey": "Codebase survey",
     "diag.doc.other": "其他",
@@ -94,8 +103,54 @@ const STRINGS = {
     "diag.operationsActive": "{n} 项进行中",
     "diag.operationsNone": "无进行中的任务",
     "diag.offline.title": "服务端不可达",
-    "diag.offline.body": "配置页仍可编辑；记忆库与诊断需要连接服务端。",
+    "diag.offline.body": "配置页仍可编辑；记忆库、统计与诊断需要连接服务端。",
     "diag.reflectTitle": "Reflect 提问",
+    "usage.title": "LLM 用量",
+    "models.title": "按模型",
+    "models.model": "模型",
+    "models.empty": "此周期内没有可按模型统计的调用。",
+    "models.partial": "调用明细较多，只统计了 {since} 之后的 {n} 次调用，更早的部分未计入，费用也是部分数据。",
+    "models.unsupported": "服务端没有返回调用明细：可能未开启 LLM 请求追踪（HINDSIGHT_API_LLM_TRACE_ENABLED）。",
+    "price.title": "单价设置（USD / 每百万 token）",
+    "price.input": "输入",
+    "price.cached": "缓存命中",
+    "price.output": "输出",
+    "price.cost": "估算费用",
+    "price.estimated": "估算费用",
+    "price.unset": "未设单价",
+    "price.unpriced": "{n} 个模型未设单价，未计入",
+    "price.none": "服务端只返回 token，不返回价格。展开下方「单价设置」，可一键从价格目录填入。",
+    "price.help": "单价统一为美元。估算 =（输入−缓存）×输入价 + 缓存×缓存价 + 输出×输出价；缓存价留空则按输入价，推理 token 不另计。结果仅供参考，以供应商账单为准。",
+    "price.fill": "从价格目录填入",
+    "price.fillHint": "取自 PI-Desktop 使用的 models.dev 目录（美元）；只填空白行，不覆盖你已填的。",
+    "price.fillNothing": "没有需要填入的空白模型",
+    "price.filled": "已填入 {n} 个模型的单价，点击保存后生效",
+    "price.filledMissed": "，另有 {m} 个在目录中找不到",
+    "price.filledNone": "目录中没有匹配这些模型，请手动填写",
+    "price.save": "保存单价",
+    "price.saved": "单价已保存",
+    "price.invalid": "有单价不是有效的非负数字",
+    "usage.unsupported": "当前服务端暂不支持 LLM 用量统计，或 Bank 尚未创建。升级服务端后即可查看。",
+    "usage.period": "统计周期",
+    "usage.period.1d": "最近 1 天",
+    "usage.period.7d": "最近 7 天",
+    "usage.period.30d": "最近 30 天",
+    "usage.requests": "请求数",
+    "usage.total": "总 token",
+    "usage.input": "输入",
+    "usage.output": "输出",
+    "usage.cached": "缓存",
+    "usage.thoughts": "推理",
+    "usage.note": "缓存与推理为明细，不另计入总数；— 表示服务端未返回。",
+    "usage.empty": "此周期内没有已记录的 LLM 请求（统计依赖服务端的 LLM trace）。",
+    "usage.retention": "服务端仅保留最近 {n} 天的记录，此周期的数据可能不完整。",
+    "usage.historyDay": "按天分布",
+    "usage.historyHour": "按小时分布（本地时区）",
+    "usage.time": "时间",
+    "usage.status.success": "成功",
+    "usage.status.error": "失败",
+    "usage.status.pending": "等待中",
+    "usage.status.running": "进行中",
     "diag.reflectHelp": "对全量记忆做一次综合推理，通常需要 20–60 秒。",
     "diag.reflectPlaceholder": "例如：这个仓库为什么放弃了 X 方案？",
     "diag.reflectBudget": "预算",
@@ -123,6 +178,7 @@ const STRINGS = {
     "tabs.label": "Panel views",
     "tab.config": "Config",
     "tab.memory": "Memory",
+    "tab.stats": "Stats",
     "tab.diagnostics": "Diagnostics",
     "common.retry": "Retry",
     "common.save": "Save",
@@ -189,8 +245,15 @@ const STRINGS = {
     "diag.token": "Token",
     "diag.documents": "Documents",
     "diag.docTotal": "{n} total",
-    "diag.doc.git": "Git commits",
-    "diag.doc.gitlog": "Git logs",
+    "diag.doc.git": "Git commits (each)",
+    "diag.doc.gitlog": "Git log (per repo)",
+    "diag.docHint.git": "Per-commit deepened documents (git:<sha>); only exist after a deepen run, 0 is normal",
+    "diag.docHint.gitlog": "One commit-history digest per repository (gitlog:<repo>)",
+    "diag.docHint.conversation": "Retained conversation transcripts",
+    "diag.docHint.survey": "Codebase survey baselines",
+    "diag.docHint.other": "Other sources (imports, markers, …)",
+    "diag.docsUnavailable": "Document counts are unavailable right now (this is not 0 documents).",
+    "diag.operationsUnknown": "Extraction status unknown",
     "diag.doc.conversation": "Conversations",
     "diag.doc.survey": "Codebase survey",
     "diag.doc.other": "Other",
@@ -199,8 +262,54 @@ const STRINGS = {
     "diag.operationsActive": "{n} in progress",
     "diag.operationsNone": "None in progress",
     "diag.offline.title": "Server unreachable",
-    "diag.offline.body": "You can still edit configuration; memory and diagnostics need the server.",
+    "diag.offline.body": "You can still edit configuration; memory, stats and diagnostics need the server.",
     "diag.reflectTitle": "Reflect",
+    "usage.title": "LLM usage",
+    "models.title": "By model",
+    "models.model": "Model",
+    "models.empty": "No calls to break down by model in this period.",
+    "models.partial": "Too many calls to read at once: only the {n} calls since {since} are counted; earlier ones are not, so cost is partial too.",
+    "models.unsupported": "The server returned no call details: LLM request tracing may be off (HINDSIGHT_API_LLM_TRACE_ENABLED).",
+    "price.title": "Unit prices (USD per 1M tokens)",
+    "price.input": "Input",
+    "price.cached": "Cache hit",
+    "price.output": "Output",
+    "price.cost": "Est. cost",
+    "price.estimated": "Estimated cost",
+    "price.unset": "No price",
+    "price.unpriced": "{n} model(s) without a price are not included",
+    "price.none": "The server reports tokens, not prices. Open \"Unit prices\" below to fill them from the price catalog.",
+    "price.help": "All prices are in USD. Estimate = (input − cached) × input price + cached × cache price + output × output price; an empty cache price uses the input price and reasoning tokens are not billed separately. For reference only — the provider's bill is authoritative.",
+    "price.fill": "Fill from price catalog",
+    "price.fillHint": "From the models.dev catalog PI-Desktop uses (USD). Only empty rows are filled; your own prices are kept.",
+    "price.fillNothing": "No empty models to fill",
+    "price.filled": "Filled prices for {n} model(s); save to apply",
+    "price.filledMissed": ", {m} not found in the catalog",
+    "price.filledNone": "No catalog match for these models; enter prices by hand",
+    "price.save": "Save prices",
+    "price.saved": "Prices saved",
+    "price.invalid": "Some prices are not valid non-negative numbers",
+    "usage.unsupported": "This server does not provide LLM usage stats yet, or the bank has not been created. Upgrade the server to see them.",
+    "usage.period": "Period",
+    "usage.period.1d": "Last 1 day",
+    "usage.period.7d": "Last 7 days",
+    "usage.period.30d": "Last 30 days",
+    "usage.requests": "Requests",
+    "usage.total": "Total tokens",
+    "usage.input": "Input",
+    "usage.output": "Output",
+    "usage.cached": "Cached",
+    "usage.thoughts": "Reasoning",
+    "usage.note": "Cached and reasoning are breakdowns, not added to the total. — means the server did not report it.",
+    "usage.empty": "No recorded LLM requests in this period (statistics rely on server-side LLM tracing).",
+    "usage.retention": "The server keeps only the last {n} days of records; this period may be incomplete.",
+    "usage.historyDay": "By day",
+    "usage.historyHour": "By hour (local time)",
+    "usage.time": "Time",
+    "usage.status.success": "Success",
+    "usage.status.error": "Failed",
+    "usage.status.pending": "Pending",
+    "usage.status.running": "Running",
     "diag.reflectHelp": "Runs agentic reasoning over all memories; usually takes 20–60 s.",
     "diag.reflectPlaceholder": "e.g. Why did this repo drop approach X?",
     "diag.reflectBudget": "Budget",
@@ -278,9 +387,15 @@ const state = {
       timer: 0,
     },
   },
+  stats: {
+    period: "7d",
+    usage: { loading: false, loaded: false, data: null, error: null },
+    models: { loading: false, loaded: false, data: null, error: null },
+    prices: { loading: false, loaded: false, data: null, draft: null, saving: false, filling: false, saveError: null, warning: "", open: false },
+  },
 };
 
-const seq = { status: 0, config: 0, pages: 0, search: 0, read: 0 };
+const seq = { status: 0, config: 0, pages: 0, search: 0, read: 0, usage: 0, models: 0 };
 let refreshing = false;
 let unsubscribeAppearance = null;
 
@@ -505,6 +620,9 @@ function renderShell() {
       <button type="button" class="tab" role="tab" id="tab-memory" data-tab="memory" aria-controls="view-memory" aria-selected="false" tabindex="-1">
         <span data-i18n="tab.memory">${t("tab.memory")}</span>
       </button>
+      <button type="button" class="tab" role="tab" id="tab-stats" data-tab="stats" aria-controls="view-stats" aria-selected="false" tabindex="-1">
+        <span data-i18n="tab.stats">${t("tab.stats")}</span>
+      </button>
       <button type="button" class="tab" role="tab" id="tab-diagnostics" data-tab="diagnostics" aria-controls="view-diagnostics" aria-selected="false" tabindex="-1">
         <span data-i18n="tab.diagnostics">${t("tab.diagnostics")}</span>
       </button>
@@ -550,6 +668,11 @@ function renderShell() {
           <div class="memory-reader" id="memory-reader" role="region" aria-label="${t(
             "memory.readerTitle",
           )}" data-i18n-aria="memory.readerTitle"></div>
+        </div>
+      </section>
+      <section class="view" id="view-stats" role="tabpanel" aria-labelledby="tab-stats" tabindex="-1" hidden>
+        <div class="view-scroll" id="stats-scroll">
+          <div id="stats-content"></div>
         </div>
       </section>
       <section class="view" id="view-diagnostics" role="tabpanel" aria-labelledby="tab-diagnostics" tabindex="-1" hidden>
@@ -662,6 +785,7 @@ async function loadStatus() {
   state.diag.loading = true;
   renderStatus();
   renderDiag();
+  renderStats();
 
   const result = await invokeData("hindsight.bank.status");
   if (token !== seq.status) return;
@@ -681,6 +805,7 @@ async function loadStatus() {
   }
   renderStatus();
   renderDiag();
+  renderStats();
   renderMemory();
 }
 
@@ -1500,7 +1625,7 @@ async function openPage(pageId) {
   if (reader) reader.scrollTop = 0;
 }
 
-/* ------------------------------------------------------------ diagnostics */
+/* ------------------------------------------------- shared diagnostics bits */
 
 function diagValue(value, isText = false) {
   return `<p class="diag-value${isText ? " is-text" : ""}">${value || "—"}</p>`;
@@ -1513,71 +1638,78 @@ function latencyMarkup(ms) {
   return `<span class="latency" data-level="${level}">${fmtNumber(value)} ms</span>`;
 }
 
-function documentsMarkup(documents) {
-  const docs = documents && typeof documents === "object" ? documents : {};
-  const counts = DOC_TYPES.map((type) => ({ type, count: Number(docs[type]) || 0 }));
-  const totalFromParts = counts.reduce((sum, item) => sum + item.count, 0);
-  const total = Number.isFinite(Number(docs.total)) ? Number(docs.total) : totalFromParts;
-  const rows = counts
-    .map(({ type, count }) => {
-      const pct = total > 0 ? Math.max(count > 0 ? 2 : 0, Math.round((count / total) * 100)) : 0;
-      return `<div class="doc-row">
-        <span class="doc-label">${t(`diag.doc.${type}`)}</span>
-        <span class="doc-bar"><span class="doc-fill" style="width:${pct}%"></span></span>
-        <span class="doc-count">${fmtNumber(count)}</span>
-      </div>`;
-    })
-    .join("");
-  return `<section class="diag-section" aria-labelledby="diag-docs-title">
-    <h2 class="diag-heading" id="diag-docs-title">${t("diag.documents")}<span class="muted">${t(
-      "diag.docTotal",
-      { n: fmtNumber(total) },
-    )}</span></h2>
-    <div class="doc-list">
-      ${rows}
-      <div class="doc-row is-total">
-        <span class="doc-label">${t("diag.total")}</span>
-        <span></span>
-        <span class="doc-count">${fmtNumber(total)}</span>
-      </div>
+function diagSkeletonMarkup() {
+  return `<div class="diag-skeleton">
+    <div class="skeleton skeleton-card diag-sk-grid"></div>
+    <div class="skeleton skeleton-card diag-sk-block"></div>
+  </div>`;
+}
+
+/** A titled block. `aside` (a pill, a count or a select) sits on the title row. */
+function diagGroupMarkup(id, titleKey, inner, aside = "") {
+  return `<section class="diag-group" id="group-${id}" aria-labelledby="diag-group-${id}">
+    <div class="diag-group-head">
+      <h2 class="diag-group-title" id="diag-group-${id}">${t(titleKey)}</h2>${aside}
     </div>
+    ${inner}
   </section>`;
 }
 
+function offlineMarkup(error) {
+  return emptyMarkup(
+    ICONS.server,
+    t("diag.offline.title"),
+    t("diag.offline.body"),
+    errorMarkup(error, { action: "retry-status" }),
+  );
+}
+
+function isStatusOffline() {
+  return Boolean(state.diag.error && isOffline(state.diag.error));
+}
+
+/** Status-derived body shared by the diagnostics and statistics tabs. */
+function statusBody(render) {
+  const diag = state.diag;
+  if (diag.loading && !diag.data && !diag.error) return diagSkeletonMarkup();
+  if (diag.error) return errorMarkup(diag.error, { action: "retry-status" });
+  return diag.data ? render(diag.data) : "";
+}
+
+/* -------------------------------------------------------------- diagnostics */
+
 function diagStatusMarkup(data) {
+  const cell = (label, value) =>
+    `<div class="diag-cell"><p class="diag-label">${t(label)}</p>${diagValue(value)}</div>`;
+  return `<div class="diag-grid">
+    ${cell("diag.server", esc(data.apiUrl || "—"))}
+    ${cell("diag.bank", esc(data.bank || "—"))}
+    ${cell("diag.version", esc(data.version || "—"))}
+    ${cell("diag.latency", latencyMarkup(data.latencyMs))}
+    ${cell("diag.pages", data.pages === null || data.pages === undefined ? "—" : fmtNumber(data.pages))}
+    ${cell("diag.token", esc(data.tokenMasked || "—"))}
+  </div>`;
+}
+
+function operationsPill(data) {
+  if (data.activeOperations === null || data.activeOperations === undefined) {
+    return `<span class="pill" title="${t("diag.operations")}">${t("diag.operationsUnknown")}</span>`;
+  }
   const active = Number(data.activeOperations) || 0;
-  return `<section class="diag-section" aria-labelledby="diag-status-title">
-      <h2 class="diag-heading" id="diag-status-title">${t("diag.statusTitle")}</h2>
-      <div class="diag-grid">
-        <div class="diag-cell"><p class="diag-label">${t("diag.server")}</p>${diagValue(
-          esc(data.apiUrl || "—"),
-        )}</div>
-        <div class="diag-cell"><p class="diag-label">${t("diag.bank")}</p>${diagValue(
-          esc(data.bank || "—"),
-        )}</div>
-        <div class="diag-cell"><p class="diag-label">${t("diag.version")}</p>${diagValue(
-          esc(data.version || "—"),
-        )}</div>
-        <div class="diag-cell"><p class="diag-label">${t("diag.latency")}</p>${diagValue(
-          latencyMarkup(data.latencyMs),
-        )}</div>
-        <div class="diag-cell"><p class="diag-label">${t("diag.pages")}</p>${diagValue(
-          fmtNumber(data.pages),
-        )}</div>
-        <div class="diag-cell"><p class="diag-label">${t("diag.token")}</p>${diagValue(
-          esc(data.tokenMasked || "—"),
-        )}</div>
-      </div>
-    </section>
-    ${documentsMarkup(data.documents)}
-    <section class="diag-section" aria-labelledby="diag-ops-title">
-      <h2 class="diag-heading" id="diag-ops-title">${t("diag.operations")}</h2>
-      <div class="status-line">
-        <span class="pill" data-level="${active > 0 ? "warn" : "ok"}">${
-          active > 0 ? t("diag.operationsActive", { n: fmtNumber(active) }) : t("diag.operationsNone")
-        }</span>
-      </div>
-    </section>`;
+  return `<span class="pill" data-level="${active > 0 ? "warn" : "ok"}" title="${t("diag.operations")}">${
+    active > 0 ? t("diag.operationsActive", { n: fmtNumber(active) }) : t("diag.operationsNone")
+  }</span>`;
+}
+
+function reflectResultMarkup(result) {
+  const budget = t(`diag.budget.${result.budget || "mid"}`);
+  return `<div class="reflect-result">
+    <div class="reflect-result-head">
+      <strong>${t("diag.reflectResult")}</strong>
+      <span>${esc(t("diag.reflectMeta", { budget, ms: fmtNumber(result.ms) }))}</span>
+    </div>
+    <pre></pre>
+  </div>`;
 }
 
 function reflectMarkup(reflect) {
@@ -1590,9 +1722,7 @@ function reflectMarkup(reflect) {
   const elapsed = reflect.running
     ? Math.max(0, Math.floor((Date.now() - reflect.startedAt) / 1000))
     : 0;
-  return `<section class="diag-section" aria-labelledby="diag-reflect-title">
-    <h2 class="diag-heading" id="diag-reflect-title">${t("diag.reflectTitle")}</h2>
-    <form class="reflect-card" id="reflect-form" novalidate>
+  return `<form class="reflect-card" id="reflect-form" novalidate>
       <p class="field-help">${t("diag.reflectHelp")}</p>
       <label class="sr-only" for="reflect-input">${t("diag.reflectTitle")}</label>
       <textarea class="reflect-input" id="reflect-input" rows="3" placeholder="${t(
@@ -1623,85 +1753,539 @@ function reflectMarkup(reflect) {
           </div>`
         : ""
     }
-    ${reflect.error ? `<div style="margin-top:8px">${errorMarkup(reflect.error)}</div>` : ""}
-  </section>`;
+    ${reflect.error ? `<div class="reflect-error">${errorMarkup(reflect.error)}</div>` : ""}
+    ${reflect.result ? reflectResultMarkup(reflect.result) : ""}`;
 }
 
-function reflectResultMarkup(result) {
-  const budget = t(`diag.budget.${result.budget || "mid"}`);
-  return `<div class="reflect-result">
-    <div class="reflect-result-head">
-      <strong>${t("diag.reflectResult")}</strong>
-      <span>${esc(t("diag.reflectMeta", { budget, ms: fmtNumber(result.ms) }))}</span>
-    </div>
-    <pre></pre>
-  </div>`;
+function focusReflectInput() {
+  const input = $("#reflect-input");
+  if (!input) return;
+  input.focus();
+  const end = input.value.length;
+  try {
+    input.setSelectionRange(end, end);
+  } catch (error) {
+    /* some browsers reject setSelectionRange on disabled controls */
+  }
 }
 
-function diagSkeletonMarkup() {
-  return `<div class="diag-skeleton">
-    <div class="skeleton skeleton-card" style="height:18px;width:28%"></div>
-    <div class="skeleton skeleton-card" style="height:64px"></div>
-    <div class="skeleton skeleton-card" style="height:18px;width:24%;margin-top:18px"></div>
-    <div class="skeleton skeleton-card" style="height:132px"></div>
-  </div>`;
+/** Reflect repaints on its own and keeps the answer's scroll position. */
+function renderReflect(restoreFocus = document.activeElement?.id === "reflect-input") {
+  const box = $("#diag-reflect-box");
+  if (!box) return;
+  const reflect = state.diag.reflect;
+  const scrollTop = box.querySelector(".reflect-result pre")?.scrollTop || 0;
+  box.innerHTML = reflectMarkup(reflect);
+  const pre = box.querySelector(".reflect-result pre");
+  if (pre && reflect.result) {
+    pre.textContent = reflect.result.text || t("diag.reflectAnswerEmpty");
+    pre.scrollTop = scrollTop;
+  }
+  if (restoreFocus && !reflect.running) focusReflectInput();
 }
 
 function renderDiag() {
   const box = $("#diag-content");
   if (!box) return;
   const diag = state.diag;
-  const offline = Boolean(diag.error && isOffline(diag.error));
+  if (isStatusOffline()) {
+    box.innerHTML = offlineMarkup(diag.error);
+    return;
+  }
+  const activeId = document.activeElement ? document.activeElement.id : "";
+  box.innerHTML =
+    diagGroupMarkup(
+      "server",
+      "diag.statusTitle",
+      statusBody(diagStatusMarkup),
+      diag.data && !diag.error ? operationsPill(diag.data) : "",
+    ) + diagGroupMarkup("reflect", "diag.reflectTitle", '<div id="diag-reflect-box"></div>');
+  renderReflect(false);
+  if (activeId === "reflect-input" && !diag.reflect.running) focusReflectInput();
+}
+
+/* -------------------------------------------------------------- statistics */
+
+function warningFor(what) {
+  const list = state.diag.data && Array.isArray(state.diag.data.warnings) ? state.diag.data.warnings : [];
+  return list.find((item) => item && item.what === what) || null;
+}
+
+function documentsMarkup(documents) {
+  if (documents === null || documents === undefined) {
+    const warning = warningFor("documents");
+    return `<p class="usage-note usage-warning" role="status">${t("diag.docsUnavailable")}${
+      warning && warning.message ? ` <code>${esc(warning.code || "")}</code> ${esc(warning.message)}` : ""
+    }</p>`;
+  }
+  const docs = documents && typeof documents === "object" ? documents : {};
+  const counts = DOC_TYPES.map((type) => ({ type, count: Number(docs[type]) || 0 }));
+  const total = Number.isFinite(Number(docs.total))
+    ? Number(docs.total)
+    : counts.reduce((sum, item) => sum + item.count, 0);
+  const rows = counts
+    .map(({ type, count }) => {
+      const pct = total > 0 ? Math.max(count > 0 ? 2 : 0, Math.round((count / total) * 100)) : 0;
+      return `<div class="doc-row">
+        <span class="doc-label" title="${t(`diag.docHint.${type}`)}">${t(`diag.doc.${type}`)}</span>
+        <span class="doc-bar"><span class="doc-fill" style="width:${pct}%"></span></span>
+        <span class="doc-count">${fmtNumber(count)}</span>
+      </div>`;
+    })
+    .join("");
+  return `<div class="doc-list">${rows}</div>`;
+}
+
+function documentsTotal(documents) {
+  const docs = documents && typeof documents === "object" ? documents : {};
+  const parts = DOC_TYPES.reduce((sum, type) => sum + (Number(docs[type]) || 0), 0);
+  return Number.isFinite(Number(docs.total)) ? Number(docs.total) : parts;
+}
+
+function usageValue(value) {
+  return value === null || value === undefined ? "—" : fmtNumber(value);
+}
+
+function fmtCompact(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  try {
+    return new Intl.NumberFormat(state.locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  } catch (error) {
+    return String(n);
+  }
+}
+
+/** Every price in the plugin is USD. */
+function fmtMoney(value) {
+  if (!Number.isFinite(value)) return "—";
+  return `$${value.toFixed(value >= 1 ? 2 : 4)}`;
+}
+
+/**
+ * Estimated cost of one model row. Cached input is billed at the cached price (falls back to the
+ * input price); reasoning tokens are not billed on top. Null when the model has no usable price.
+ */
+function estimateCost(row, price) {
+  if (!price || price.input == null || price.output == null) return null;
+  const tokens = row.tokens || {};
+  const input = Number(tokens.input) || 0;
+  const cached = Math.min(Number(tokens.cached) || 0, input);
+  const cachedRate = price.cached == null ? price.input : price.cached;
+  return ((input - cached) * price.input + cached * cachedRate + (Number(tokens.output) || 0) * price.output) / 1e6;
+}
+
+/** Day buckets are cut by the server at local midnight; show the day only, in local time. */
+function fmtBucket(iso, trunc) {
+  const date = new Date(String(iso || ""));
+  if (Number.isNaN(date.getTime())) return String(iso || "");
+  const options =
+    trunc === "hour"
+      ? { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }
+      : { dateStyle: "medium" };
+  try {
+    return new Intl.DateTimeFormat(state.locale, options).format(date);
+  } catch (error) {
+    return date.toLocaleString();
+  }
+}
+
+function usageErrorMarkup(error) {
+  // 404 means "this server has no such endpoint / bank": nothing to retry.
+  if (error && error.code === "NOT_FOUND") {
+    return `<p class="usage-note usage-unsupported" role="status">${t("usage.unsupported")}</p>`;
+  }
+  return errorMarkup(error, { action: "retry-usage" });
+}
+
+function usageHistoryMarkup(data) {
+  const buckets = Array.isArray(data.buckets) ? data.buckets : [];
+  if (!buckets.length) return "";
+  // Newest first.
+  const sorted = [...buckets].sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0));
+  const rows = sorted
+    .map(
+      (bucket) => `<tr>
+        <th scope="row">${esc(fmtBucket(bucket.time, data.trunc))}</th>
+        <td>${usageValue(bucket.requests)}</td><td>${usageValue(bucket.tokens && bucket.tokens.total)}</td>
+      </tr>`,
+    )
+    .join("");
+  const label = data.trunc === "hour" ? t("usage.historyHour") : t("usage.historyDay");
+  return `<details class="usage-history"><summary>${label}</summary>
+    <div class="usage-table-wrap"><table class="usage-table">
+      <thead><tr><th scope="col">${t("usage.time")}</th><th scope="col">${t("usage.requests")}</th><th scope="col">${t("usage.total")}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></details>`;
+}
+
+function usageDataMarkup(data) {
+  const totals = data.totals || {};
+  const tokens = totals.tokens || {};
   const parts = [];
-  const hadReflectFocus =
-    document.activeElement && document.activeElement.id === "reflect-input";
+  if (totals.requests === 0) {
+    parts.push(`<p class="usage-note usage-empty">${t("usage.empty")}</p>`);
+  } else {
+    const breakdown = ["input", "output", "cached", "thoughts"]
+      .map(
+        (field) =>
+          `<span class="usage-part"><span class="usage-part-label">${t(`usage.${field}`)}</span><b>${usageValue(tokens[field])}</b></span>`,
+      )
+      .join("");
+    const statuses = Object.entries(totals.statuses || {})
+      .map(([status, count]) => {
+        const key = `usage.status.${status}`;
+        const label = t(key) === key ? status : t(key);
+        const level = status === "success" ? "ok" : status === "error" ? "warn" : "";
+        return `<span class="pill" data-level="${level}">${esc(label)} ${usageValue(count)}</span>`;
+      })
+      .join("");
+    parts.push(`<div class="usage-primary">
+        <div class="usage-stat"><p class="diag-label">${t("usage.requests")}</p><p class="usage-big">${usageValue(totals.requests)}</p></div>
+        <div class="usage-stat"><p class="diag-label">${t("usage.total")}</p><p class="usage-big">${usageValue(tokens.total)}</p></div>
+      </div>
+      <div class="usage-breakdown">${breakdown}</div>
+      ${statuses ? `<div class="status-line usage-statuses">${statuses}</div>` : ""}
+      <p class="usage-note">${t("usage.note")}</p>`);
+  }
+  if (data.retentionDays != null && data.retentionDays < Number.parseInt(data.period, 10)) {
+    parts.push(`<p class="usage-note usage-warning">${esc(t("usage.retention", { n: data.retentionDays }))}</p>`);
+  }
+  if (totals.requests !== 0) parts.push(usageHistoryMarkup(data));
+  return parts.join("");
+}
 
-  if (diag.loading && !diag.data && !diag.error) {
-    parts.push(diagSkeletonMarkup());
-  } else if (diag.error) {
-    if (offline) {
-      parts.push(
-        emptyMarkup(
-          ICONS.server,
-          t("diag.offline.title"),
-          t("diag.offline.body"),
-          errorMarkup(diag.error, { action: "retry-status" }),
-        ),
-      );
-    } else {
-      parts.push(
-        `<section class="diag-section">${errorMarkup(diag.error, { action: "retry-status" })}</section>`,
-      );
-    }
-  }
+function usageBodyMarkup(usage) {
+  if (usage.error) return usageErrorMarkup(usage.error);
+  // Keep the previous result on screen while a new period loads (no height jump).
+  if (usage.data) return usageDataMarkup(usage.data);
+  return `<p class="usage-note" role="status"><span class="spinner"></span> ${t("common.loading")}</p>`;
+}
 
-  if (diag.data && !diag.error) {
-    parts.push(diagStatusMarkup(diag.data));
-  }
-  if (!offline) {
-    parts.push(reflectMarkup(diag.reflect));
-  }
-  if (diag.reflect.result) {
-    parts.push(reflectResultMarkup(diag.reflect.result));
-  }
+function usageMarkup() {
+  return `<div class="stats-block">${usageBodyMarkup(state.stats.usage)}</div>`;
+}
 
-  box.innerHTML = parts.join("");
-  if (hadReflectFocus && !diag.reflect.running) {
-    const input = $("#reflect-input");
-    if (input) {
-      input.focus();
-      const end = input.value.length;
-      try {
-        input.setSelectionRange(end, end);
-      } catch (error) {
-        /* some browsers reject setSelectionRange on disabled controls */
+function periodSelectMarkup() {
+  const options = USAGE_PERIODS.map(
+    (period) =>
+      `<option value="${period}"${state.stats.period === period ? " selected" : ""}>${t(`usage.period.${period}`)}</option>`,
+  ).join("");
+  return `<div class="select-wrap"><select class="ctl-select" id="usage-period" aria-label="${t("usage.period")}">${options}</select>${ICONS.chevron}</div>`;
+}
+
+/* ---- per-model breakdown and price editor */
+
+function priceInput(draft, model, field) {
+  const entry = draft.models[model];
+  const value = entry && entry[field] != null ? entry[field] : "";
+  return `<label class="price-field"><span>${t(`price.${field}`)}</span><input class="ctl-input is-mono" type="number" inputmode="decimal" min="0" step="any"
+    data-price-model="${esc(model)}" data-price-field="${field}" value="${esc(value)}" placeholder="—" /></label>`;
+}
+
+function priceEditorMarkup(models) {
+  const prices = state.stats.prices;
+  if (!prices.draft) return "";
+  const names = [...new Set([...models.map((row) => row.model), ...Object.keys(prices.draft.models)])];
+  const rows = names
+    .map(
+      (name) => `<div class="price-row">
+        <span class="price-model" title="${esc(name)}">${esc(name)}</span>
+        <div class="price-inputs">${["input", "cached", "output"].map((field) => priceInput(prices.draft, name, field)).join("")}</div>
+      </div>`,
+    )
+    .join("");
+  return `<details class="usage-history price-editor" id="price-editor"${prices.open ? " open" : ""}>
+    <summary>${t("price.title")}</summary>
+    <div class="price-body">
+      ${prices.warning ? `<p class="usage-note usage-warning">${esc(prices.warning)}</p>` : ""}
+      <div class="price-toolbar">
+        <button type="button" class="btn btn-quiet" data-action="fill-prices"${prices.filling ? " disabled" : ""}>${t("price.fill")}</button>
+        <span class="usage-note">${t("price.fillHint")}</span>
+      </div>
+      <div class="price-rows">${rows}</div>
+      <p class="usage-note">${t("price.help")}</p>
+      ${prices.saveError ? `<div class="reflect-error">${errorMarkup(prices.saveError)}</div>` : ""}
+      <div class="price-actions">
+        <button type="button" class="btn btn-primary" data-action="save-prices"${prices.saving ? " disabled" : ""}>${
+          prices.saving ? `<span class="spinner"></span>` : ""
+        }${t("price.save")}</button>
+      </div>
+    </div>
+  </details>`;
+}
+
+function modelsTableMarkup(data) {
+  const prices = state.stats.prices.data;
+  let costTotal = 0;
+  let priced = 0;
+  const rows = data.models
+    .map((row) => {
+      const cost = estimateCost(row, prices && prices.models[row.model]);
+      if (cost !== null) {
+        costTotal += cost;
+        priced += 1;
       }
+      return `<tr>
+        <th scope="row" title="${esc(row.provider ? `${row.provider}/${row.model}` : row.model)}">${esc(row.model)}</th>
+        <td>${fmtNumber(row.requests)}</td>
+        <td>${fmtCompact(row.tokens.input)}</td>
+        <td>${fmtCompact(row.tokens.output)}</td>
+        <td>${fmtCompact(row.tokens.cached)}</td>
+        <td>${cost === null ? `<span class="muted">${t("price.unset")}</span>` : fmtMoney(cost)}</td>
+      </tr>`;
+    })
+    .join("");
+  const unpriced = data.models.length - priced;
+  const summary = priced
+    ? `<div class="usage-cost"><span class="usage-part-label">${t("price.estimated")}</span><b class="usage-big">${fmtMoney(
+        costTotal,
+      )}</b>${unpriced ? `<span class="usage-note">${t("price.unpriced", { n: unpriced })}</span>` : ""}</div>`
+    : `<p class="usage-note">${t("price.none")}</p>`;
+  return `${summary}
+    <div class="usage-table-wrap is-boxed"><table class="usage-table models-table">
+      <thead><tr><th scope="col">${t("models.model")}</th><th scope="col">${t("usage.requests")}</th><th scope="col">${t(
+        "usage.input",
+      )}</th><th scope="col">${t("usage.output")}</th><th scope="col">${t("usage.cached")}</th><th scope="col">${t(
+        "price.cost",
+      )}</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    ${
+      data.partial
+        ? `<p class="usage-note usage-warning">${t("models.partial", { n: fmtNumber(data.scanned), since: fmtDate(data.since) })}</p>`
+        : ""
+    }`;
+}
+
+function modelsBodyMarkup() {
+  const models = state.stats.models;
+  if (models.error) {
+    if (models.error.code === "NOT_FOUND") {
+      return `<p class="usage-note usage-unsupported" role="status">${t("models.unsupported")}</p>`;
+    }
+    return errorMarkup(models.error, { action: "retry-models" });
+  }
+  if (!models.data) {
+    return `<p class="usage-note" role="status"><span class="spinner"></span> ${t("common.loading")}</p>`;
+  }
+  if (!models.data.models.length) return `<p class="usage-note usage-empty">${t("models.empty")}</p>`;
+  return modelsTableMarkup(models.data) + priceEditorMarkup(models.data.models);
+}
+
+function modelsMarkup() {
+  return `<h3 class="diag-heading">${t("models.title")}</h3><div class="stats-block">${modelsBodyMarkup()}</div>`;
+}
+
+function updateStatsBusy() {
+  const stats = state.stats;
+  $("#group-llm")?.setAttribute("aria-busy", String(Boolean(stats.usage.loading || stats.models.loading)));
+}
+
+function renderUsage() {
+  const box = $("#stats-usage-box");
+  if (box) box.innerHTML = usageMarkup();
+  updateStatsBusy();
+}
+
+function renderModels() {
+  const box = $("#stats-models-box");
+  if (box) box.innerHTML = modelsMarkup();
+  updateStatsBusy();
+}
+
+function renderStats() {
+  const box = $("#stats-content");
+  if (!box) return;
+  const diag = state.diag;
+  if (isStatusOffline()) {
+    box.innerHTML = offlineMarkup(diag.error);
+    return;
+  }
+  const activeId = document.activeElement ? document.activeElement.id : "";
+  const total =
+    diag.data && !diag.error && diag.data.documents
+      ? `<span class="diag-total">${t("diag.docTotal", { n: fmtNumber(documentsTotal(diag.data.documents)) })}</span>`
+      : "";
+  box.innerHTML =
+    diagGroupMarkup("docs", "diag.documents", statusBody((data) => documentsMarkup(data.documents)), total) +
+    diagGroupMarkup(
+      "llm",
+      "usage.title",
+      '<div id="stats-usage-box"></div><div id="stats-models-box" class="stats-models"></div>',
+      periodSelectMarkup(),
+    );
+  renderUsage();
+  renderModels();
+  if (activeId === "usage-period") $("#usage-period")?.focus();
+}
+
+async function loadUsage(period = state.stats.period) {
+  const token = ++seq.usage;
+  const usage = state.stats.usage;
+  state.stats.period = period;
+  usage.loading = true;
+  usage.error = null;
+  renderUsage();
+  const result = await invokeData("hindsight.bank.usage", { period });
+  if (token !== seq.usage) return;
+  usage.loading = false;
+  usage.loaded = true;
+  usage.data = result.ok ? result : null;
+  usage.error = result.ok ? null : result.error;
+  renderUsage();
+}
+
+async function loadModels(period = state.stats.period, refresh = false) {
+  const token = ++seq.models;
+  const models = state.stats.models;
+  state.stats.period = period;
+  models.loading = true;
+  models.error = null;
+  renderModels();
+  // First paint from the local cache (instant), then sync with the server for anything newer.
+  if (!models.data) {
+    const cached = await invokeData("hindsight.bank.usageModels", { period, cacheOnly: true });
+    if (token !== seq.models) return;
+    if (cached.ok && !cached.cold) {
+      models.data = cached;
+      renderModels();
     }
   }
-  const pre = box.querySelector(".reflect-result pre");
-  if (pre && diag.reflect.result) {
-    pre.textContent = diag.reflect.result.text || t("diag.reflectAnswerEmpty");
+  const result = await invokeData("hindsight.bank.usageModels", { period, refresh });
+  if (token !== seq.models) return;
+  models.loading = false;
+  models.loaded = true;
+  if (result.ok) {
+    models.data = result;
+    models.error = null;
+  } else {
+    // A failed sync keeps whatever the cache showed; only an empty panel shows the error.
+    models.error = models.data ? null : result.error;
+    if (models.data) toast(result.error && result.error.message ? result.error.message : t("error.unknown"));
   }
+  renderModels();
+}
+
+function priceDraftFrom(prices) {
+  const models = {};
+  for (const [name, entry] of Object.entries(prices.models || {})) {
+    models[name] = {
+      input: entry.input == null ? "" : String(entry.input),
+      cached: entry.cached == null ? "" : String(entry.cached),
+      output: entry.output == null ? "" : String(entry.output),
+    };
+  }
+  return { models };
+}
+
+async function loadPrices() {
+  const prices = state.stats.prices;
+  if (prices.loading) return;
+  prices.loading = true;
+  const result = await invokeData("hindsight.prices.read");
+  prices.loading = false;
+  prices.loaded = true;
+  const data = result.ok ? result.prices : { models: {} };
+  prices.data = data;
+  prices.warning = result.ok ? result.warning || "" : "";
+  prices.draft = priceDraftFrom(data);
+  renderModels();
+}
+
+/** Fill still-empty rows from the bundled catalog; prices the user already typed are never touched. */
+async function fillPrices() {
+  const prices = state.stats.prices;
+  if (prices.filling || !prices.draft) return;
+  const seen = (state.stats.models.data?.models || []).map((row) => row.model);
+  const names = [...new Set([...seen, ...Object.keys(prices.draft.models)])];
+  const isEmpty = (name) => {
+    const entry = prices.draft.models[name];
+    return !entry || ["input", "cached", "output"].every((field) => !String(entry[field] ?? "").trim());
+  };
+  const wanted = names.filter(isEmpty);
+  if (!wanted.length) {
+    toast(t("price.fillNothing"));
+    return;
+  }
+  prices.filling = true;
+  renderModels();
+  const result = await invokeData("hindsight.prices.suggest", { models: wanted });
+  prices.filling = false;
+  if (!result.ok) {
+    prices.saveError = result.error;
+    renderModels();
+    return;
+  }
+  prices.saveError = null;
+  let filled = 0;
+  for (const [name, price] of Object.entries(result.suggestions || {})) {
+    prices.draft.models[name] = {
+      input: price.input == null ? "" : String(price.input),
+      cached: price.cached == null ? "" : String(price.cached),
+      output: price.output == null ? "" : String(price.output),
+    };
+    filled += 1;
+  }
+  prices.open = true;
+  renderModels();
+  const missed = (result.unmatched || []).length;
+  toast(
+    filled
+      ? t("price.filled", { n: filled }) + (missed ? t("price.filledMissed", { m: missed }) : "")
+      : t("price.filledNone"),
+  );
+}
+
+function loadStats(period = state.stats.period, refresh = false) {
+  const jobs = [loadUsage(period), loadModels(period, refresh)];
+  if (!state.stats.prices.loaded) jobs.push(loadPrices());
+  return Promise.allSettled(jobs);
+}
+
+function priceDraftToPayload(draft) {
+  const models = {};
+  const fieldErrors = {};
+  for (const [name, entry] of Object.entries(draft.models)) {
+    const price = {};
+    for (const field of ["input", "cached", "output"]) {
+      const raw = String(entry[field] ?? "").trim();
+      if (!raw) {
+        price[field] = null;
+        continue;
+      }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) fieldErrors[`${name}.${field}`] = raw;
+      else price[field] = n;
+    }
+    models[name] = price;
+  }
+  return { payload: { models }, fieldErrors };
+}
+
+async function savePrices() {
+  const prices = state.stats.prices;
+  if (prices.saving || !prices.draft) return;
+  const { payload, fieldErrors } = priceDraftToPayload(prices.draft);
+  if (Object.keys(fieldErrors).length) {
+    prices.saveError = { code: "INVALID_CONFIG", message: t("price.invalid") };
+    renderModels();
+    return;
+  }
+  prices.saving = true;
+  prices.saveError = null;
+  renderModels();
+  const result = await invokeData("hindsight.prices.save", { prices: payload });
+  prices.saving = false;
+  if (result.ok) {
+    prices.data = result.prices;
+    prices.draft = priceDraftFrom(result.prices);
+    prices.warning = "";
+    toast(t("price.saved"));
+  } else {
+    prices.saveError = result.error;
+  }
+  renderModels();
 }
 
 function startReflectTimer() {
@@ -1729,13 +2313,13 @@ async function submitReflect() {
   const query = String(reflect.query || "").trim();
   if (!query) {
     reflect.error = { code: "EMPTY_QUERY", message: t("diag.reflectRequired") };
-    renderDiag();
+    renderReflect();
     $("#reflect-input")?.focus();
     return;
   }
   if (isOfflineNow()) {
     reflect.error = state.status.error;
-    renderDiag();
+    renderReflect();
     return;
   }
 
@@ -1744,7 +2328,7 @@ async function submitReflect() {
   reflect.startedAt = Date.now();
   reflect.result = null;
   reflect.error = null;
-  renderDiag();
+  renderReflect();
   startReflectTimer();
 
   const result = await invokeData("hindsight.bank.reflect", {
@@ -1764,7 +2348,7 @@ async function submitReflect() {
   } else {
     reflect.error = result.error;
   }
-  renderDiag();
+  renderReflect();
 }
 
 /* ------------------------------------------------------------------- tabs */
@@ -1781,7 +2365,7 @@ function syncTabs() {
 }
 
 function activateTab(name, options = {}) {
-  if (!["config", "memory", "diagnostics"].includes(name)) return;
+  if (!["config", "memory", "stats", "diagnostics"].includes(name)) return;
   state.tab = name;
   syncTabs();
   if (options.focus) {
@@ -1790,6 +2374,12 @@ function activateTab(name, options = {}) {
   }
   if (name === "diagnostics" && !state.diag.loading && !state.diag.data && !state.diag.error) {
     loadStatus();
+  }
+  if (name === "stats" && !state.diag.loading && !state.diag.data && !state.diag.error) {
+    loadStatus();
+  }
+  if (name === "stats" && !state.stats.usage.loaded && !state.stats.usage.loading) {
+    loadStats();
   }
   if (name === "memory" && !state.pages.loading && !state.pages.loaded && !state.pages.error) {
     loadPages();
@@ -1829,6 +2419,8 @@ async function refreshCurrent() {
   } else if (state.tab === "memory") {
     if (state.search.query) jobs.push(runSearch(state.search.input));
     else jobs.push(loadPages());
+  } else if (state.tab === "stats") {
+    jobs.push(loadUsage(), loadModels(state.stats.period, true));
   }
   await Promise.allSettled(jobs);
   refreshing = false;
@@ -1873,6 +2465,7 @@ function renderAll() {
   renderConfig();
   renderMemory();
   renderDiag();
+  renderStats();
   syncTabs();
   updateRefreshUI();
 }
@@ -1973,6 +2566,30 @@ function bindEvents() {
     }
   });
 
+  const statsContent = $("#stats-content");
+  statsContent?.addEventListener("change", (event) => {
+    const { target } = event;
+    if (target.id === "usage-period") {
+      state.stats.period = target.value;
+      loadStats(target.value);
+    }
+  });
+  statsContent?.addEventListener("input", (event) => {
+    const { target } = event;
+    const draft = state.stats.prices.draft;
+    if (!draft || !target.dataset || !target.dataset.priceModel) return;
+    const entry = (draft.models[target.dataset.priceModel] ||= { input: "", cached: "", output: "" });
+    entry[target.dataset.priceField] = target.value;
+  });
+  // `toggle` does not bubble, so listen in the capture phase to remember the editor's open state.
+  statsContent?.addEventListener(
+    "toggle",
+    (event) => {
+      if (event.target.id === "price-editor") state.stats.prices.open = event.target.open;
+    },
+    true,
+  );
+
   $("#app")?.addEventListener("click", async (event) => {
     const actionNode = event.target.closest("[data-action]");
     if (!actionNode) return;
@@ -2018,6 +2635,22 @@ function bindEvents() {
     }
     if (action === "retry-config") {
       loadConfig();
+      return;
+    }
+    if (action === "retry-usage") {
+      loadUsage();
+      return;
+    }
+    if (action === "retry-models") {
+      loadModels(state.stats.period, true);
+      return;
+    }
+    if (action === "save-prices") {
+      savePrices();
+      return;
+    }
+    if (action === "fill-prices") {
+      fillPrices();
       return;
     }
     if (action === "retry-status") {
