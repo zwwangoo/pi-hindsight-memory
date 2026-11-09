@@ -144,6 +144,7 @@ const STRINGS = {
     "usage.note": "缓存与推理为明细，不另计入总数；— 表示服务端未返回。",
     "usage.empty": "此周期内没有已记录的 LLM 请求（统计依赖服务端的 LLM trace）。",
     "usage.retention": "服务端仅保留最近 {n} 天的记录，此周期的数据可能不完整。",
+    "usage.coverage": "本机只累计了 {since} 之后的调用：服务端只保留较短时间的调用记录，打开面板时才会累计到本机，未打开期间的调用无法补回，所以这个周期的数字会偏少。",
     "usage.historyDay": "按天分布",
     "usage.historyHour": "按小时分布（本地时区）",
     "usage.time": "时间",
@@ -303,6 +304,7 @@ const STRINGS = {
     "usage.note": "Cached and reasoning are breakdowns, not added to the total. — means the server did not report it.",
     "usage.empty": "No recorded LLM requests in this period (statistics rely on server-side LLM tracing).",
     "usage.retention": "The server keeps only the last {n} days of records; this period may be incomplete.",
+    "usage.coverage": "This machine has only tracked calls since {since}: the server keeps call records for a short time, and calls are saved locally only while the panel is open, so this period reads low.",
     "usage.historyDay": "By day",
     "usage.historyHour": "By hour (local time)",
     "usage.time": "Time",
@@ -1951,6 +1953,9 @@ function usageDataMarkup(data) {
   if (data.retentionDays != null && data.retentionDays < Number.parseInt(data.period, 10)) {
     parts.push(`<p class="usage-note usage-warning">${esc(t("usage.retention", { n: data.retentionDays }))}</p>`);
   }
+  if (data.limitedCoverage && data.trackedFrom) {
+    parts.push(`<p class="usage-note usage-warning">${esc(t("usage.coverage", { since: fmtDate(data.trackedFrom) }))}</p>`);
+  }
   if (totals.requests !== 0) parts.push(usageHistoryMarkup(data));
   return parts.join("");
 }
@@ -2136,21 +2141,32 @@ async function loadUsage(period = state.stats.period) {
   renderUsage();
 }
 
+/** The usage numbers come from the same local aggregate as the model table (see usageModels). */
+function applyUsageSummary(summary) {
+  const usage = state.stats.usage;
+  usage.data = summary;
+  usage.error = null;
+  usage.loaded = true;
+}
+
 async function loadModels(period = state.stats.period, refresh = false) {
   const token = ++seq.models;
   const models = state.stats.models;
+  const usage = state.stats.usage;
   state.stats.period = period;
   models.loading = true;
   models.error = null;
+  usage.loading = true;
   renderModels();
+  renderUsage();
   // First paint from the local cache (instant), then sync with the server for anything newer.
-  if (!models.data) {
-    const cached = await invokeData("hindsight.bank.usageModels", { period, cacheOnly: true });
-    if (token !== seq.models) return;
-    if (cached.ok && !cached.cold) {
-      models.data = cached;
-      renderModels();
-    }
+  const cached = await invokeData("hindsight.bank.usageModels", { period, cacheOnly: true });
+  if (token !== seq.models) return;
+  if (cached.ok && !cached.cold) {
+    models.data = cached;
+    if (cached.summary) applyUsageSummary(cached.summary);
+    renderModels();
+    renderUsage();
   }
   const result = await invokeData("hindsight.bank.usageModels", { period, refresh });
   if (token !== seq.models) return;
@@ -2159,12 +2175,23 @@ async function loadModels(period = state.stats.period, refresh = false) {
   if (result.ok) {
     models.data = result;
     models.error = null;
-  } else {
-    // A failed sync keeps whatever the cache showed; only an empty panel shows the error.
-    models.error = models.data ? null : result.error;
-    if (models.data) toast(result.error && result.error.message ? result.error.message : t("error.unknown"));
+    usage.loading = false;
+    if (result.summary) applyUsageSummary(result.summary);
+    renderModels();
+    renderUsage();
+    return;
   }
+  // A failed sync keeps whatever the cache showed; only an empty panel shows the error.
+  models.error = models.data ? null : result.error;
+  if (models.data) toast(result.error && result.error.message ? result.error.message : t("error.unknown"));
   renderModels();
+  if (models.data) {
+    usage.loading = false;
+    renderUsage();
+  } else {
+    // No local history to show (e.g. call tracing is off): the server's own stats still answer.
+    await loadUsage(period);
+  }
 }
 
 function priceDraftFrom(prices) {
@@ -2238,7 +2265,7 @@ async function fillPrices() {
 }
 
 function loadStats(period = state.stats.period, refresh = false) {
-  const jobs = [loadUsage(period), loadModels(period, refresh)];
+  const jobs = [loadModels(period, refresh)];
   if (!state.stats.prices.loaded) jobs.push(loadPrices());
   return Promise.allSettled(jobs);
 }
@@ -2420,7 +2447,7 @@ async function refreshCurrent() {
     if (state.search.query) jobs.push(runSearch(state.search.input));
     else jobs.push(loadPages());
   } else if (state.tab === "stats") {
-    jobs.push(loadUsage(), loadModels(state.stats.period, true));
+    jobs.push(loadModels(state.stats.period, true));
   }
   await Promise.allSettled(jobs);
   refreshing = false;

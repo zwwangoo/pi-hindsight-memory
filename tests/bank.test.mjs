@@ -391,3 +391,49 @@ test("usageModels rebuilds from a corrupt cache file and maps a 404 to an action
   await assert.rejects(() => usageModels("7d", { refresh: true }), (e) => e.code === "NOT_FOUND" && /TRACE/.test(e.hint));
   await assert.rejects(() => usageModels("forever"), (e) => e.code === "INVALID_CONFIG");
 });
+
+test("usageModels builds the usage summary per period from locally accumulated calls", async () => {
+  const day = 86_400_000;
+  installFetch(listRoute(() => ({ items: [
+    call("m", 100, 10, 0, { started_at: ago(30 * 60_000) }),
+    call("m", 200, 20, 0, { started_at: ago(2 * 3_600_000), status: "error" }),
+    call("m", 400, 40, 0, { started_at: ago(3 * day) }),
+    call("m", 800, 80, 0, { started_at: ago(10 * day) }),
+  ] })));
+  const { usageModels } = await import("../src/panel/bank.mjs");
+  const one = (await usageModels("1d", { refresh: true })).summary;
+  const seven = (await usageModels("7d")).summary;
+  const thirty = (await usageModels("30d")).summary;
+
+  assert.deepEqual([one.totals.requests, seven.totals.requests, thirty.totals.requests], [2, 3, 4], "each period counts its own window");
+  assert.deepEqual([one.totals.tokens.total, seven.totals.tokens.total, thirty.totals.tokens.total], [330, 770, 1650], "total = input + output");
+  assert.deepEqual(one.totals.statuses, { success: 1, error: 1 });
+  assert.equal(one.trunc, "hour");
+  assert.equal(seven.trunc, "day");
+  assert.ok(thirty.buckets.length > seven.buckets.length, "a longer period spans more days");
+  const times = thirty.buckets.map((b) => Date.parse(b.time));
+  assert.deepEqual(times, [...times].sort((a, b) => a - b), "buckets are returned oldest first");
+  assert.equal(thirty.buckets.reduce((sum, b) => sum + b.requests, 0), thirty.totals.requests);
+});
+
+test("usage summary flags a period that is longer than what this machine has tracked", async () => {
+  installFetch(listRoute(() => ({ items: [call("m", 1, 1, 0, { started_at: ago(3_600_000) })] })));
+  const { usageModels } = await import("../src/panel/bank.mjs");
+  const one = (await usageModels("1d", { refresh: true })).summary;
+  const week = (await usageModels("7d")).summary;
+  assert.equal(one.limitedCoverage, false, "a day is never flagged");
+  assert.equal(week.limitedCoverage, true);
+  assert.ok(Date.parse(week.trackedFrom) > Date.now() - 2 * 3_600_000);
+});
+
+test("usage summary keeps history the server has already forgotten", async () => {
+  const old = call("m", 50, 5, 0, { started_at: ago(5 * 86_400_000) });
+  installFetch(listRoute(() => ({ items: [old] })));
+  const { usageModels } = await import("../src/panel/bank.mjs");
+  await usageModels("7d", { refresh: true });
+  // The server has since dropped that call; only a new one remains.
+  installFetch(listRoute(() => ({ items: [call("m", 10, 1, 0, { started_at: ago(60_000) })] })));
+  const week = (await usageModels("7d", { refresh: true })).summary;
+  assert.equal(week.totals.requests, 2);
+  assert.equal((await usageModels("1d")).summary.totals.requests, 1);
+});

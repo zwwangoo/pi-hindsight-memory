@@ -386,6 +386,7 @@ function addCall(entry, item, startedMs) {
     thoughts: 0,
   });
   row.requests += 1;
+  if (String(item?.status ?? "").toLowerCase() !== "success") row.error = (row.error ?? 0) + 1;
   for (const [field, source] of [["input", "input_tokens"], ["output", "output_tokens"], ["cached", "cached_tokens"], ["thoughts", "thoughts_tokens"]]) {
     const n = usageNumber(item?.[source]);
     if (n === null) row.missing += 1;
@@ -493,9 +494,20 @@ export async function usageModels(period = "7d", { refresh = false, cacheOnly = 
   const entry = loadEntry(key);
   const cutoff = Date.now() - PERIOD_DAYS[period] * 86_400_000;
   const floorHour = hourKey(cutoff);
+  const hourly = period === "1d";
   const byModel = new Map();
+  const buckets = new Map();
+  const statuses = { success: 0, error: 0 };
+  const tokens = { input: 0, output: 0, cached: 0, thoughts: 0 };
+  let requests = 0;
   for (const [hour, models] of Object.entries(entry.hours)) {
     if (hour < floorHour) continue;
+    const at = new Date(`${hour}:00:00Z`);
+    // The server only keeps a short window of calls, so day buckets are cut here, in the viewer's
+    // local time, from the hours accumulated on this machine.
+    const bucketKey = hourly ? at.toISOString() : new Date(at.getFullYear(), at.getMonth(), at.getDate()).toISOString();
+    const bucket = buckets.get(bucketKey) ?? { time: bucketKey, requests: 0, tokens: { total: 0 } };
+    buckets.set(bucketKey, bucket);
     for (const [model, row] of Object.entries(models)) {
       const sum = byModel.get(model) ?? {
         model,
@@ -506,19 +518,47 @@ export async function usageModels(period = "7d", { refresh = false, cacheOnly = 
       };
       sum.requests += row.requests;
       sum.missing += row.missing;
-      for (const field of ["input", "output", "cached", "thoughts"]) sum.tokens[field] += row[field];
+      const failed = Math.min(row.error ?? 0, row.requests);
+      requests += row.requests;
+      statuses.error += failed;
+      statuses.success += row.requests - failed;
+      bucket.requests += row.requests;
+      bucket.tokens.total += row.input + row.output;
+      for (const field of ["input", "output", "cached", "thoughts"]) {
+        sum.tokens[field] += row[field];
+        tokens[field] += row[field];
+      }
       byModel.set(model, sum);
     }
   }
   const models = [...byModel.values()].sort((a, b) => b.requests - a.requests);
   const fromMs = entry.from ? Date.parse(entry.from) : NaN;
+  const partial = Number.isFinite(fromMs) && fromMs > cutoff;
+  const firstHour = Object.keys(entry.hours).sort()[0];
+  const trackedFrom = entry.from || (firstHour ? `${firstHour}:00:00.000Z` : null);
+  // A longer period than this machine has tracked reads low: the server forgets old calls.
+  const limitedCoverage =
+    partial || (PERIOD_DAYS[period] > 1 && trackedFrom !== null && Date.parse(trackedFrom) > cutoff + 86_400_000);
   return {
     period,
     cold: entry.watermark === null,
     updatedAt: entry.updatedAt || null,
-    scanned: models.reduce((total, row) => total + row.requests, 0),
-    partial: Number.isFinite(fromMs) && fromMs > cutoff,
-    ...(Number.isFinite(fromMs) && fromMs > cutoff ? { since: entry.from } : {}),
+    scanned: requests,
+    partial,
+    ...(partial ? { since: entry.from } : {}),
     models,
+    summary: {
+      bank: conn.bankId,
+      period,
+      trunc: hourly ? "hour" : "day",
+      trackedFrom,
+      limitedCoverage,
+      totals: {
+        requests,
+        statuses: Object.fromEntries(Object.entries(statuses).filter(([name, count]) => count > 0 || name === "success")),
+        tokens: { ...tokens, total: tokens.input + tokens.output },
+      },
+      buckets: [...buckets.values()].sort((x, y) => Date.parse(x.time) - Date.parse(y.time)),
+    },
   };
 }

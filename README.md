@@ -53,7 +53,7 @@
 | --- | --- |
 | **配置** | 22 个字段分 5 组；逐字段校验；有依赖的字段（如 `reflectTimeoutMs` 仅在 `autoInject=reflect` 生效）按当前未保存值实时置灰 |
 | **记忆库** | 页列表 + 搜索 + 阅读区 |
-| **统计** | 文档统计；最近 1 / 7 / 30 天 LLM 请求与 token 用量（按天/小时分布，新的在上）；按模型的请求与 token，并可估算费用（服务端不返回价格：单价统一为美元/每百万 token，可一键从随插件发布的价格目录填入，也可手填；单价存于 `~/.hindsight/pi-desktop-prices.json`，不改动 `coding-agent.json`） |
+| **统计** | 文档统计；最近 1 / 7 / 30 天 LLM 请求与 token 用量（1 天按小时、7/30 天按天分布，新的在上；数字取自本机累计，见下）；按模型的请求与 token，并可估算费用（服务端不返回价格：单价统一为美元/每百万 token，可一键从随插件发布的价格目录填入，也可手填；单价存于 `~/.hindsight/pi-desktop-prices.json`，不改动 `coding-agent.json`） |
 | **诊断** | 服务端 / bank / 版本 / 延迟 / 页数 / 未完成抽取 / token 掩码，以及 reflect 提问（low/mid/high） |
 
 - 视图只通过 `window.pluginBridge.invoke("hindsight.*")` 与 `main.js` 通信（CSP `connect-src 'none'`）。
@@ -74,7 +74,7 @@
 | `hindsight.config.save` | `{patch}` | 同上 + `backupPath` |
 | `hindsight.bank.status` | `{}` | `{bank, apiUrl, version, latencyMs, pages, documents, activeOperations, tokenMasked, warnings}` |
 | `hindsight.bank.usage` | `{period?: "1d" | "7d" | "30d"}` | `{bank, period, start, trunc, retentionDays?, totals:{requests, statuses, tokens:{input, output, cached, thoughts, total}}, buckets:[{time, requests, statuses, tokens}]}` |
-| `hindsight.bank.usageModels` | `{period?, refresh?, cacheOnly?}` | `{period, cold, updatedAt, scanned, partial, since?, models:[{model, provider, requests, missing, tokens:{input, output, cached, thoughts}}]}`。明细接口每条调用都带完整 prompt（约 20 MB/500 条，5–11 秒），所以首次同步一次读取最近 30 天（最多 6 页×500 条，超出则 `partial` 并给出 `since`），只把计数按「小时×模型」写入 `~/.hindsight/pi-desktop-llm-usage.json`（不含 prompt/回答），之后只拉水位线之后的新调用；`cacheOnly` 只读本地缓存，面板用它先秒出数字再同步 |
+| `hindsight.bank.usageModels` | `{period?, refresh?, cacheOnly?}` | `{period, cold, updatedAt, scanned, partial, since?, summary:{bank, period, trunc:"hour"\|"day", trackedFrom, limitedCoverage, totals:{requests, statuses, tokens}, buckets:[{time, requests, tokens:{total}}]}, models:[{model, provider, requests, missing, tokens:{input, output, cached, thoughts}}]}`。明细接口每条调用都带完整 prompt（约 20 MB/500 条，5–11 秒），所以首次同步一次读取最近 30 天（最多 6 页×500 条，超出则 `partial` 并给出 `since`），只把计数按「小时×模型」写入 `~/.hindsight/pi-desktop-llm-usage.json`（不含 prompt/回答），之后只拉水位线之后的新调用；`cacheOnly` 只读本地缓存，面板用它先秒出数字再同步 |
 | `hindsight.prices.read` | `{}` | `{prices:{currency:"USD", models:{[model]:{input, cached, output}}}, warning?}`（每百万 token；读到非 USD 的旧文件会忽略并给出 `warning`） |
 | `hindsight.prices.suggest` | `{models:[string]}` | `{suggestions:{[model]:{input, cached, output, vendor}}, unmatched:[string], catalogDate}`（按模型名前缀匹配原厂，不猜测） |
 | `hindsight.prices.save` | `{prices:{models}}` | `{prices}`（始终以 USD 写入）；非数字/负数返回 `INVALID_CONFIG` 并带 `fields` |
@@ -168,3 +168,7 @@ md5 与来源逐项记录在 [vendor/PROVENANCE.md](vendor/PROVENANCE.md)。上�
 ## 价格目录
 
 `src/panel/price-catalog.json` 由 `node scripts/sync-prices.mjs` 从 PI-Desktop 自带的 models.dev 目录（`/Applications/PI-Desktop.app/Contents/Resources/models.dev/api.json`）抽取，仅含 deepseek / anthropic / google / openai / xai / mistral / moonshotai / zai 八家原厂的基础单价（USD/每百万 token，不含按上下文长度分档的价格）。PI-Desktop 升级、价格变动后重新运行该脚本并重新打包即可。
+
+## LLM 用量为什么取自本机累计
+
+Hindsight 服务端只保留较短时间的 LLM 调用记录（实测约一天），其 `/llm-requests/stats` 不管选 1/7/30 天都只能返回这一小段，所以统计页的用量汇总和按天分布不再用它，而是和「按模型」共用同一份本机累计（`~/.hindsight/pi-desktop-llm-usage.json`，按「小时×模型」只存计数，不含 prompt/回答）。面板每次打开统计页会把服务端的新调用累计进去；**面板没打开、而服务端又已删除的那段时间无法补回**，周期超过本机已累计的范围时页面会提示「本机只累计了 xx 之后的调用」。仅当调用明细接口不可用（如服务端未开启 LLM 请求追踪）时，才回退为服务端自带的统计。

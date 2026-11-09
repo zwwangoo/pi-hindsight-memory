@@ -15,7 +15,7 @@ function panel(invoke = async () => ({ ok: true })) {
   vm.runInContext(
     `${source}\nthis.__panel = { state, usageMarkup, loadUsage, fmtBucket, operationsPill, usageHistoryMarkup,
       estimateCost, fmtMoney, modelsBodyMarkup, priceDraftToPayload, priceEditorMarkup, renderStats, fillPrices, loadModels,
-      documentsMarkup, diagStatusMarkup };`,
+      documentsMarkup, diagStatusMarkup, usageDataMarkup };`,
     context,
   );
   return (code) => vm.runInContext(`__panel.${code}`, context);
@@ -266,4 +266,65 @@ test("a failed sync keeps the cached numbers instead of replacing them with an e
   await run('loadModels("7d")');
   assert.equal(run("state.stats.models.data.scanned"), 1);
   assert.equal(run("state.stats.models.error"), null);
+});
+
+const summaryFor = (requests, total, extra = {}) => ({
+  bank: "b", period: "7d", trunc: "day", limitedCoverage: false, trackedFrom: null,
+  totals: { requests, statuses: { success: requests }, tokens: { total, input: total, output: 0, cached: 0, thoughts: 0 } },
+  buckets: [], ...extra,
+});
+const modelsFor = (requests, total, extra) => ({ ok: true, cold: false, scanned: requests, partial: false, models: [], summary: summaryFor(requests, total, extra) });
+
+test("the usage numbers follow the selected period, driven by the local aggregate", async () => {
+  const byPeriod = { "1d": modelsFor(10, 1000), "7d": modelsFor(70, 7000), "30d": modelsFor(300, 30000) };
+  const calls = [];
+  const run = panel(async (channel, payload) => {
+    calls.push(channel);
+    return channel === "hindsight.bank.usageModels" ? byPeriod[payload.period] : { ok: true };
+  });
+  for (const [period, want] of [["1d", 10], ["7d", 70], ["30d", 300], ["1d", 10]]) {
+    await run(`loadModels("${period}")`);
+    assert.equal(run("state.stats.usage.data.totals.requests"), want, period);
+    assert.equal(run("state.stats.usage.loading"), false);
+  }
+  assert.ok(!calls.includes("hindsight.bank.usage"), "the server's fixed-window stats are not consulted when local data exists");
+});
+
+test("the cached numbers of the new period replace the old ones before the sync returns", async () => {
+  let release;
+  const run = panel((channel, payload) => {
+    if (payload.cacheOnly) return Promise.resolve(modelsFor(payload.period === "30d" ? 300 : 70, 1));
+    return new Promise((resolve) => { release = () => resolve(modelsFor(payload.period === "30d" ? 301 : 71, 1)); });
+  });
+  const first = run('loadModels("7d")');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(run("state.stats.usage.data.totals.requests"), 70, "instant paint from cache");
+  release(); await first;
+  const second = run('loadModels("30d")');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(run("state.stats.usage.data.totals.requests"), 300, "the period switch is visible immediately, not stuck on the 7d figure");
+  release(); await second;
+  assert.equal(run("state.stats.usage.data.totals.requests"), 301);
+});
+
+test("without any local history the server's own stats are the fallback", async () => {
+  const calls = [];
+  const run = panel(async (channel, payload) => {
+    calls.push(channel);
+    if (channel === "hindsight.bank.usageModels") return { ok: false, error: { code: "NOT_FOUND", message: "tracing off" } };
+    return { ok: true, bank: "b", period: payload.period, trunc: "day", buckets: [], totals: { requests: 5, statuses: {}, tokens: { total: 9, input: 9, output: 0, cached: 0, thoughts: 0 } } };
+  });
+  await run('loadModels("7d")');
+  assert.ok(calls.includes("hindsight.bank.usage"));
+  assert.equal(run("state.stats.usage.data.totals.requests"), 5);
+  assert.equal(run("state.stats.usage.loading"), false);
+});
+
+test("a period longer than the tracked history says so; a covered one does not", () => {
+  const run = panel();
+  const limited = run(`usageDataMarkup(${JSON.stringify(summaryFor(5, 9, { limitedCoverage: true, trackedFrom: "2026-11-04T09:00:00.000Z" }))})`);
+  assert.match(limited, /usage-warning/);
+  assert.match(limited, /只累计了/);
+  const covered = run(`usageDataMarkup(${JSON.stringify(summaryFor(5, 9))})`);
+  assert.doesNotMatch(covered, /只累计了/);
 });
