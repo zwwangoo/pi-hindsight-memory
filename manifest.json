@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "local.hindsight.memory",
   "name": "Hindsight Memory",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "engines": {
     "piDesktop": ">=0.17.0"
   },
